@@ -1,179 +1,1 @@
-script_properties('work-in-pause')
-
-local samp = require('samp.events')
-local effil = require('effil')
-local inicfg = require('inicfg')
-local ffi = require('ffi')
-local imgui = require('mimgui')
-local encoding = require('encoding')
-encoding.default = 'CP1251'
-local u8 = encoding.UTF8
-
--- ================= ГЌГЂГ‘Г’ГђГЋГ‰ГЉГ€ ГЋГЃГЌГЋГ‚Г‹Г…ГЌГ€Гџ =================
-local SCRIPT_VERSION = "0.0.26" 
-local UPDATE_URL = "https://raw.githubusercontent.com/dmashmakov2000-coder/item11/main/Item.lua"
--- ========================================================
-
-local SCRIPT_CONFIG_NAME = 'Item'
-local SCRIPT_CONFIG_FILENAME = SCRIPT_CONFIG_NAME .. '.ini'
-
-local items = {
-    1811, 522, 4344, 5991, 1146, 731, 9726, 9697,
-    7480, 555, 1425, 556, 557, 4794 -- Г“ГЎГ°Г Г« ГІГ®Г·ГЄГі Гў ГЄГ®Г­Г¶ГҐ
-}
-
-local items_name = {
-    [7480] = "Г‹Г Г°ГҐГ¶ Fortnite",
-    [555] = "ГЃГ°Г®Г­Г§Г®ГўГ Гї Г°ГіГ«ГҐГІГЄГ ",
-    [1425] = "ГЏГ«Г ГІГЁГ­Г®ГўГ Гї Г°ГіГ«ГҐГІГЄГ ",
-    [556] = "Г‘ГҐГ°ГҐГЎГ°ГїГ­Г Гї Г°ГіГ«ГҐГІГЄГ ",
-    [557] = "Г‡Г®Г«Г®ГІГ Гї Г°ГіГ«ГҐГІГЄГ ",
-    [4794] = "Г‹Г Г°ГҐГ¶ ГЉГ«Г Г¤Г®ГЁГ±ГЄГ ГІГҐГ«Гї",
-    [1811] = "Bitcoin (BTC)",
-    [522] = "Г‘ГҐГ¬ГҐГ©Г­Г»Г© ГІГ Г«Г®Г­",
-    [4344] = "Г’Г Г«Г®Г­ +1 EXP",
-    [5991] = "ГѓГ°ГіГ­ГІ",
-    [1146] = "ГѓГ°Г Г¦Г¤Г Г­Г±ГЄГЁГ© ГІГ Г«Г®Г­",
-    [731] = "ГЂz-Coins",
-    [9726] = "Г‹Г®ГІГҐГ°ГҐГ©Г­Г»Г© ГЎГЁГ«ГҐГІ 2ГЄ26",
-    [9697] = "ГЊГ®Г­ГҐГІГ  ГЌГ®ГўГ®ГЈГ® ГЈГ®Г¤Г  (2026)",
-}
-
-local cfg = inicfg.load({
-    config = {
-        chat = '',
-        token = '',
-        itemAdding = false
-    }
-}, SCRIPT_CONFIG_NAME)
-
-local chat = imgui.new.char[128](tostring(cfg.config.chat))
-local token = imgui.new.char[128](tostring(cfg.config.token))
-local itemAdding = imgui.new.bool(cfg.config.itemAdding)
-local window = imgui.new.bool(false)
-
--- ГЏГ®ГІГ®ГЄ Г¤Г«Гї Г°Г ГЎГ®ГІГ» Г± Г±ГҐГІГјГѕ (Telegram ГЁ ГЋГЎГ­Г®ГўГ«ГҐГ­ГЁГї)
-local networkThread = effil.thread(function(url, mode, data)
-    local requests = require('requests')
-    if mode == "telegram" then
-        return requests.post(url, {params = data})
-    elseif mode == "check_update" then
-        local res = requests.get(url)
-        if res.status_code == 200 then
-            return res.text
-        end
-    end
-    return nil
-end)
-
-function main()
-    while not isSampAvailable() do wait(0) end
-    
-    sampAddChatMessage('[logg] {ffffff}ГЂГЄГІГЁГўГ Г¶ГЁГї: /item', 0x3083ff)
-    
-    -- ГђГҐГЈГЁГ±ГІГ°Г Г¶ГЁГї ГЄГ®Г¬Г Г­Г¤ Г‚ГЌГ“Г’ГђГ€ main
-    sampRegisterChatCommand('item', function() window[0] = not window[0] end)
-    sampRegisterChatCommand('itemupdate', function() checkUpdate(true) end)
-
-    -- ГЂГўГІГ®ГЇГ°Г®ГўГҐГ°ГЄГ  ГЇГ°ГЁ Г±ГІГ Г°ГІГҐ
-    checkUpdate(false)
-
-    while true do
-        wait(0)
-        -- Г‡Г¤ГҐГ±Гј Г¬Г®Г¦Г­Г® Г¤Г®ГЎГ ГўГЁГІГј Г«Г®ГЈГЁГЄГі, ГҐГ±Г«ГЁ Г­ГіГ¦Г­Г  Гў Г¶ГЁГЄГ«ГҐ
-    end
-end
-
--- Г”ГіГ­ГЄГ¶ГЁГї ГЇГ°Г®ГўГҐГ°ГЄГЁ Г®ГЎГ­Г®ГўГ«ГҐГ­ГЁГ©
-function checkUpdate(manual)
-    if manual then sampAddChatMessage("[Item] {ffffff}ГЏГ°Г®ГўГҐГ°ГЄГ  Г®ГЎГ­Г®ГўГ«ГҐГ­ГЁГ©...", -1) end
-    
-    local proc = networkThread(UPDATE_URL, "check_update")
-    lua_thread.create(function()
-        while proc:status() == "running" do wait(0) end
-        local result = proc:get()
-        if result then
-            local remote_version = result:match('local SCRIPT_VERSION = "(.-)"')
-            if remote_version and remote_version ~= SCRIPT_VERSION then
-                sampAddChatMessage(string.format('[Item] {ffff00}ГЌГ Г©Г¤ГҐГ­Г  Г­Г®ГўГ Гї ГўГҐГ°Г±ГЁГї: %s. {ffffff}ГЋГЎГ­Г®ГўГ«ГїГѕ...', remote_version), -1)
-                updateScript(result)
-            else
-                if manual then sampAddChatMessage("[Item] {00ff00}Г“ ГўГ Г± ГіГ±ГІГ Г­Г®ГўГ«ГҐГ­Г  ГЇГ®Г±Г«ГҐГ¤Г­ГїГї ГўГҐГ°Г±ГЁГї.", -1) end
-            end
-        else
-            if manual then sampAddChatMessage("[Item] {ff0000}ГЋГёГЁГЎГЄГ  ГЇГ°ГЁ ГЇГ®Г¤ГЄГ«ГѕГ·ГҐГ­ГЁГЁ ГЄ Г±ГҐГ°ГўГҐГ°Гі Г®ГЎГ­Г®ГўГ«ГҐГ­ГЁГ©.", -1) end
-        end
-    end)
-end
-
-function updateScript(content)
-    local f = io.open(thisScript().path, "w")
-    if f then
-        f:write(content)
-        f:close()
-        sampAddChatMessage("[Item] {00ff00}ГЋГЎГ­Г®ГўГ«ГҐГ­ГЁГҐ ГіГ±ГЇГҐГёГ­Г®! ГЏГҐГ°ГҐГ§Г ГЈГ°ГіГ§ГЄГ ...", -1)
-        thisScript():reload()
-    else
-        sampAddChatMessage("[Item] {ff0000}ГЋГёГЁГЎГЄГ : ГЌГҐ ГіГ¤Г Г«Г®Г±Гј ГЇГҐГ°ГҐГ§Г ГЇГЁГ±Г ГІГј ГґГ Г©Г«. ГЏГ°Г®ГўГҐГ°ГјГІГҐ ГЇГ°Г ГўГ  Г¤Г®Г±ГІГіГЇГ .", -1)
-    end
-end
-
--- mimgui ГЁГ­ГІГҐГ°ГґГҐГ©Г±
-imgui.OnInitialize(function()
-    imgui.GetIO().IniFilename = nil
-end)
-
-imgui.OnFrame(
-    function() return window[0] end,
-    function(player)
-        local resX, resY = getScreenResolution()
-        imgui.SetNextWindowPos(imgui.ImVec2(resX / 2, resY / 2), imgui.Cond.FirstUseEver, imgui.ImVec2(0.5, 0.5))
-        imgui.SetNextWindowSize(imgui.ImVec2(300, 180), imgui.Cond.FirstUseEver)
-        imgui.Begin('Logg', window, imgui.WindowFlags.NoResize + imgui.WindowFlags.NoCollapse)
-        
-        if imgui.InputText(u8('Г€Г„ Г—Г ГІ'), chat, ffi.sizeof(chat), imgui.InputTextFlags.Password) then
-            cfg.config.chat = ffi.string(chat)
-            inicfg.save(cfg, SCRIPT_CONFIG_FILENAME)
-        end
-        if imgui.InputText(u8('Г’Г®ГЄГҐГ­'), token, ffi.sizeof(token), imgui.InputTextFlags.Password) then
-            cfg.config.token = ffi.string(token)
-            inicfg.save(cfg, SCRIPT_CONFIG_FILENAME)
-        end
-        if imgui.Checkbox(u8('Г„Г®ГЎГ ГўГ«ГҐГ­ГЁГҐ ГЇГ°ГҐГ¤Г¬ГҐГІГ '), itemAdding) then
-            cfg.config.itemAdding = itemAdding[0]
-            inicfg.save(cfg, SCRIPT_CONFIG_FILENAME)
-        end
-        
-        if imgui.Button(u8("ГЏГ°Г®ГўГҐГ°ГЁГІГј Г®ГЎГ­Г®ГўГ«ГҐГ­ГЁГї")) then
-            checkUpdate(true)
-        end
-        
-        imgui.End()
-    end
-)
-
--- ГђГ ГЎГ®ГІГ  Г± Г±Г®Г®ГЎГ№ГҐГ­ГЁГїГ¬ГЁ ГЁ Telegram
-function sendTelegramMessage(text)
-    local chat_id_str = ffi.string(chat)
-    local token_str = ffi.string(token)
-    if chat_id_str == '' or token_str == '' then return end
-
-    local text_to_send = text:gsub('{......}', '')
-    networkThread(('https://api.telegram.org/bot%s/sendMessage'):format(token_str), "telegram", {
-        chat_id = chat_id_str,
-        text = u8:decode(text_to_send)
-    })
-end
-
-function samp.onServerMessage(color, text)
-    if color == -65281 and itemAdding[0] and text:find("Г‚Г Г¬ ГЎГ»Г« Г¤Г®ГЎГ ГўГ«ГҐГ­ ГЇГ°ГҐГ¤Г¬ГҐГІ") then
-        local itemId = tonumber(text:match(":item(%d+):"))
-        if itemId then
-            if items_name[itemId] then
-                sendTelegramMessage("ГЏГ®Г«ГіГ·ГҐГ­ ГЇГ°ГҐГ¤Г¬ГҐГІ: " .. items_name[itemId])
-            else
-                sendTelegramMessage("ГЏГ®Г«ГіГ·ГҐГ­ Г­ГҐГЁГ§ГўГҐГ±ГІГ­Г»Г© ГЇГ°ГҐГ¤Г¬ГҐГІ. ID: " .. itemId)
-            end
-        end
-    end
-end
+script_properties('work-in-pause')local samp = require('samp.events')local effil = require('effil')local inicfg = require('inicfg')local ffi = require('ffi')local imgui = require('mimgui')local encoding = require('encoding')encoding.default = 'CP1251'local u8 = encoding.UTF8 -- ================= НАСТРОЙКИ ОБНОВЛЕНИЯ =================local SCRIPT_VERSION = "0.0.7" local UPDATE_URL = "https://raw.githubusercontent.com/dmashmakov2000-coder/item11/main/Item.lua"-- ========================================================local SCRIPT_CONFIG_NAME = 'Item'local SCRIPT_CONFIG_FILENAME = SCRIPT_CONFIG_NAME .. '.ini'local items = {    1811, 522, 4344, 5991, 1146, 731, 9726, 9697,    7480, 555, 1425, 556, 557, 4794, 1769, 1639, 1638, 1637 -- Убрал точку в конце}local items_name = {    [7480] = "Ларец Fortnite",    [555] = "Бронзовая рулетка",    [1425] = "Платиновая рулетка",    [556] = "Серебряная рулетка",    [557] = "Золотая рулетка",    [4794] = "Ларец Кладоискателя",    [1811] = "Bitcoin (BTC)",    [522] = "Семейный талон",    [4344] = "Талон +1 EXP",    [5991] = "Грунт",    [1146] = "Гражданский талон",    [731] = "Аz-Coins",    [9726] = "Лотерейный билет 2к26",    [9697] = "Монета Нового года (2026)",	[1769] = "Супер Мото-ящик",	[1639] = "Rare boz Blue",	[1637] = "Rare boz Yellow",	[1638] = "Rare boz Red",}local cfg = inicfg.load({    config = {        chat = '',        token = '',        itemAdding = false    }}, SCRIPT_CONFIG_NAME)local chat = imgui.new.char[128](tostring(cfg.config.chat))local token = imgui.new.char[128](tostring(cfg.config.token))local itemAdding = imgui.new.bool(cfg.config.itemAdding)local window = imgui.new.bool(false)-- Поток для работы с сетью (Telegram и Обновления)local networkThread = effil.thread(function(url, mode, data)    local requests = require('requests')    if mode == "telegram" then        return requests.post(url, {params = data})    elseif mode == "check_update" then        local res = requests.get(url)        if res.status_code == 200 then            return res.text        end    end    return nilend)function main()    while not isSampAvailable() do wait(0) end        sampAddChatMessage('[Logg] {ffffff}Активация: /item', 0x3083ff)        -- Регистрация команд ВНУТРИ main    sampRegisterChatCommand('item', function() window[0] = not window[0] end)    sampRegisterChatCommand('itemupdate', function() checkUpdate(true) end)    -- Автопроверка при старте    checkUpdate(false)    while true do        wait(0)        -- Здесь можно добавить логику, если нужна в цикле    endend-- Функция проверки обновленийfunction checkUpdate(manual)    if manual then sampAddChatMessage("[Item] {ffffff}Проверка обновлений...", -1) end        local proc = networkThread(UPDATE_URL, "check_update")    lua_thread.create(function()        while proc:status() == "running" do wait(0) end        local result = proc:get()        if result then            local remote_version = result:match('local SCRIPT_VERSION = "(.-)"')            if remote_version and remote_version ~= SCRIPT_VERSION then                sampAddChatMessage(string.format('[Item] {ffff00}Найдена новая версия: %s. {ffffff}Обновляю...', remote_version), -1)                updateScript(result)            else                if manual then sampAddChatMessage("[Item] {00ff00}У вас установлена последняя версия.", -1) end            end        else            if manual then sampAddChatMessage("[Item] {ff0000}Ошибка при подключении к серверу обновлений.", -1) end        end    end)endfunction updateScript(content)    local f = io.open(thisScript().path, "w")    if f then        f:write(content)        f:close()        sampAddChatMessage("[Item] {00ff00}Обновление успешно! Перезагрузка...", -1)        thisScript():reload()    else        sampAddChatMessage("[Item] {ff0000}Ошибка: Не удалось перезаписать файл. Проверьте права доступа.", -1)    endend-- mimgui интерфейсimgui.OnInitialize(function()    imgui.GetIO().IniFilename = nilend)imgui.OnFrame(    function() return window[0] end,    function(player)        local resX, resY = getScreenResolution()        imgui.SetNextWindowPos(imgui.ImVec2(resX / 2, resY / 2), imgui.Cond.FirstUseEver, imgui.ImVec2(0.5, 0.5))        imgui.SetNextWindowSize(imgui.ImVec2(300, 180), imgui.Cond.FirstUseEver)        imgui.Begin('Logg', window, imgui.WindowFlags.NoResize + imgui.WindowFlags.NoCollapse)                if imgui.InputText(u8('ИД Чат'), chat, ffi.sizeof(chat), imgui.InputTextFlags.Password) then            cfg.config.chat = ffi.string(chat)            inicfg.save(cfg, SCRIPT_CONFIG_FILENAME)        end        if imgui.InputText(u8('Токен'), token, ffi.sizeof(token), imgui.InputTextFlags.Password) then            cfg.config.token = ffi.string(token)            inicfg.save(cfg, SCRIPT_CONFIG_FILENAME)        end        if imgui.Checkbox(u8('Добавление предмета'), itemAdding) then            cfg.config.itemAdding = itemAdding[0]            inicfg.save(cfg, SCRIPT_CONFIG_FILENAME)        end                if imgui.Button(u8("Проверить обновления")) then            checkUpdate(true)        end                imgui.End()    end)-- Работа с сообщениями и Telegramfunction sendTelegramMessage(text)    local chat_id_str = ffi.string(chat)    local token_str = ffi.string(token)    if chat_id_str == '' or token_str == '' then return end    local text_to_send = text:gsub('{......}', '')    networkThread(('https://api.telegram.org/bot%s/sendMessage'):format(token_str), "telegram", {        chat_id = chat_id_str,        text = u8:decode(text_to_send)    })endfunction samp.onServerMessage(color, text)    if color == -65281 and itemAdding[0] and text:find("Вам был добавлен предмет") then        local itemId = tonumber(text:match(":item(%d+):"))        if itemId then            if items_name[itemId] then                sendTelegramMessage("Получен предмет: " .. items_name[itemId])            else                sendTelegramMessage("Получен неизвестный предмет. ID: " .. itemId)            end        end    endend
