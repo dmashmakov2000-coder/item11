@@ -4,7 +4,7 @@ local samp = require('samp.events')
 local effil = require('effil')
 local inicfg = require('inicfg')
 local ffi = require('ffi')
-local SCRIPT_VERSION = "0.0.1" -- Текущая версия вашего скрипта
+local SCRIPT_VERSION = "0.0.22" -- Текущая версия вашего скрипта
 
 local imgui = require('mimgui')
 local encoding = require('encoding')
