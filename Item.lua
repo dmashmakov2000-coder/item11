@@ -1,199 +1,1 @@
-script_properties('work-in-pause')
-
-local samp = require('samp.events')
-local effil = require('effil')
-local inicfg = require('inicfg')
-local ffi = require('ffi')
-local imgui = require('mimgui')
-local encoding = require('encoding')
-encoding.default = 'CP1251'
-local u8 = encoding.UTF8
-
-local SCRIPT_VERSION = "0.0.4" 
-local UPDATE_URL = "https://raw.githubusercontent.com/dmashmakov2000-coder/item11/main/Item.lua"
-
-local SCRIPT_CONFIG_NAME = 'Item'
-local SCRIPT_CONFIG_FILENAME = SCRIPT_CONFIG_NAME .. '.ini'
-
--- Г‘ГЇГЁГ±Г®ГЄ ГЇГ°ГҐГ¤Г¬ГҐГІГ®Гў (ID)
-local items = {
-    1811, 555, 1425, 522, 4344, 5991, 1146, 731, 730, 673, 9726, 9697, 556, 557,
-    7480, 4794, 1769, 1639, 1638, 1637
-}
-
--- Г‘ГЇГЁГ±Г®ГЄ Г­Г Г§ГўГ Г­ГЁГ©
-local items_name = {
-    [1811] = "Bitcoin (BTC)",
-    [555] = "ГЃГ°Г®Г­Г§Г®ГўГ Гї Г°ГіГ«ГҐГІГЄГ ",
-    [1425] = "ГЏГ«Г ГІГЁГ­Г®ГўГ Гї Г°ГіГ«ГҐГІГЄГ ",
-    [522] = "Г‘ГҐГ¬ГҐГ©Г­Г»Г© ГІГ Г«Г®Г­",
-    [4344] = "Г’Г Г«Г®Г­ +1 EXP ",
-    [5991] = "ГѓГ°ГіГ­ГІ",
-    [1146] = "ГѓГ°Г Г¦Г¤Г Г­Г±ГЄГЁГ© ГІГ Г«Г®Г­",
-    [731] = "ГЂz-Coins",
-    [730] = "ГЂz-Coins",
-    [673] = "Г’Г Г«Г®Г­ EXP",
-    [9726] = "Г‹Г®ГІГҐГ°ГҐГ©Г­Г»Г© ГЎГЁГ«ГҐГІ 2ГЄ26",
-    [9697] = "ГЊГ®Г­ГҐГІГ  ГЌГ®ГўГ®ГЈГ® ГЈГ®Г¤Г  (2026)",
-    [556] = "Г‘ГҐГ°ГҐГЎГ°ГїГ­Г Гї Г°ГіГ«ГҐГІГЄГ ",
-    [557] = "Г‡Г®Г«Г®ГІГ Гї Г°ГіГ«ГҐГІГЄГ ",
-    [7480] = "Г‹Г Г°ГҐГ¶ Fortnite",
-    [4794] = "Г‹Г Г°ГҐГ¶ ГЉГ«Г Г¤Г®ГЁГ±ГЄГ ГІГҐГ«Гї",
-    [1769] = "Г‘ГіГЇГҐГ° ГЊГ®ГІГ®-ГїГ№ГЁГЄ",
-    [1639] = "Rare box Blue",
-    [1638] = "Rare box Red",
-    [1637] = "Rare box Yellow",
-}
-
-local function tableIncludes(self, value)
-    for _, v in pairs(self) do if v == value then return true end end
-    return false
-end
-
-local cfg = inicfg.load({
-    config = { chat = '', token = '', itemAdding = false }
-}, SCRIPT_CONFIG_NAME)
-
-local chat = imgui.new.char[128](tostring(cfg.config.chat))
-local token = imgui.new.char[128](tostring(cfg.config.token))
-local itemAdding = imgui.new.bool(cfg.config.itemAdding)
-local window = imgui.new.bool(false)
-local activeTab = imgui.new.int(1) -- 1: ГЌГ Г±ГІГ°Г®Г©ГЄГЁ, 2: Г“ГўГҐГ¤Г®Г¬Г«ГҐГ­ГЁГї, 3: ГЃГіГ¤ГіГ№ГҐГҐ
-
--- ГЏГ®ГІГ®ГЄ Telegram
-local effilTelegramSendMessage = effil.thread(function(text, chatID, token)
-    local requests = require('requests')
-    pcall(function()
-        requests.post(('https://api.telegram.org/bot%s/sendMessage'):format(token), {
-            params = { text = text, chat_id = chatID }
-        })
-    end)
-end)
-
-function url_encode(text)
-    local text = string.gsub(text, "([^%w-_ %.~=])", function(c)
-        return string.format("%%%02X", string.byte(c))
-    end)
-    return string.gsub(text, " ", "+")
-end
-
-function sendTelegramMessage(text)
-    local chat_id_str = ffi.string(chat)
-    local token_str = ffi.string(token)
-    if chat_id_str == '' or token_str == '' then return end
-    -- Г€Г±ГЇГ®Г«ГјГ§ГіГҐГ¬ u8:encode Г·ГІГ®ГЎГ» ГЈГ Г°Г Г­ГІГЁГ°Г®ГўГ ГІГј UTF-8 Г¤Г«Гї Telegram
-    effilTelegramSendMessage(url_encode(u8:encode(text)), chat_id_str, token_str)
-end
-
-function main()
-    while not isSampAvailable() do wait(0) end
-    sampAddChatMessage('{3083ff}[ItemLog] {ffffff}ГЂГЄГІГЁГўГ Г¶ГЁГї: /item', -1)
-    
-    sampRegisterChatCommand('item', function() window[0] = not window[0] end)
-    sampRegisterChatCommand('itemupdate', function() checkUpdate(true) end)
-
-    checkUpdate(false)
-    wait(-1)
-end
-
-imgui.OnInitialize(function() imgui.GetIO().IniFilename = nil end)
-
-imgui.OnFrame(function() return window[0] end, function()
-    local resX, resY = getScreenResolution()
-    imgui.SetNextWindowPos(imgui.ImVec2(resX / 2, resY / 2), imgui.Cond.FirstUseEver, imgui.ImVec2(0.5, 0.5))
-    imgui.SetNextWindowSize(imgui.ImVec2(350, 300), imgui.Cond.FirstUseEver)
-    imgui.Begin('Script [TM]', window, imgui.WindowFlags.NoResize)
-    
-    -- Г‚ГЄГ«Г Г¤ГЄГЁ (ГЉГ­Г®ГЇГЄГЁ Г±ГўГҐГ°ГµГі)
-    if imgui.Button(u8"ГЌГ Г±ГІГ°Г®Г©ГЄГЁ", imgui.ImVec2(105, 25)) then activeTab[0] = 1 end
-    imgui.SameLine()
-    if imgui.Button(u8"Г“ГўГҐГ¤Г®Г¬Г«ГҐГ­ГЁГї", imgui.ImVec2(105, 25)) then activeTab[0] = 2 end
-    imgui.SameLine()
-    if imgui.Button(u8"ГЃГіГ¤ГіГ№ГҐГҐ", imgui.ImVec2(105, 25)) then activeTab[0] = 3 end
-    
-    imgui.Separator()
-
-    if activeTab[0] == 1 then -- Г‚ГЉГ‹ГЂГ„ГЉГЂ ГЌГЂГ‘Г’ГђГЋГ‰ГЉГ€
-        imgui.PushItemWidth(200)
-        if imgui.InputText(u8('Г€Г„ Г—Г ГІ'), chat, ffi.sizeof(chat), imgui.InputTextFlags.Password) then
-            cfg.config.chat = ffi.string(chat)
-            inicfg.save(cfg, SCRIPT_CONFIG_FILENAME)
-        end
-        if imgui.InputText(u8('Г’Г®ГЄГҐГ­'), token, ffi.sizeof(token), imgui.InputTextFlags.Password) then
-            cfg.config.token = ffi.string(token)
-            inicfg.save(cfg, SCRIPT_CONFIG_FILENAME)
-        end
-        imgui.PopItemWidth()
-
-        if imgui.Checkbox(u8('Г‚ГЄГ«ГѕГ·ГЁГІГј ГіГўГҐГ¤Г®Г¬Г«ГҐГ­ГЁГї Г® ГЇГ°ГҐГ¤Г¬ГҐГІГ Гµ'), itemAdding) then
-            cfg.config.itemAdding = itemAdding[0]
-            inicfg.save(cfg, SCRIPT_CONFIG_FILENAME)
-        end
-
-        imgui.SetCursorPosY(imgui.GetWindowHeight() - 40)
-        if imgui.Button(u8("Г’ГҐГ±ГІ Г±Г®Г®ГЎГ№ГҐГ­ГЁГї"), imgui.ImVec2(120, 25)) then
-            sendTelegramMessage("ГќГІГ® ГІГҐГ±ГІГ®ГўГ®ГҐ Г±Г®Г®ГЎГ№ГҐГ­ГЁГҐ! Г‘ГЄГ°ГЁГЇГІ Г­Г Г±ГІГ°Г®ГҐГ­ ГўГҐГ°Г­Г®.")
-            sampAddChatMessage("{00ff00}[ItemLog] Г’ГҐГ±ГІГ®ГўГ®ГҐ Г±Г®Г®ГЎГ№ГҐГ­ГЁГҐ Г®ГІГЇГ°Г ГўГ«ГҐГ­Г®!", -1)
-        end
-
-    elseif activeTab[0] == 2 then -- Г‚ГЉГ‹ГЂГ„ГЉГЂ Г“Г‚Г…Г„ГЋГЊГ‹Г…ГЌГ€Гџ
-        imgui.Text(u8"Г‘ГЇГЁГ±Г®ГЄ Г®ГІГ±Г«ГҐГ¦ГЁГўГ ГҐГ¬Г»Гµ ГЇГ°ГҐГ¤Г¬ГҐГІГ®Гў:")
-        imgui.BeginChild("item_list", imgui.ImVec2(0, 180), true)
-        for id, name in pairs(items_name) do
-            imgui.TextColored(imgui.ImVec4(0.2, 0.5, 1.0, 1.0), "["..id.."] ")
-            imgui.SameLine()
-            imgui.Text(u8(name))
-        end
-        imgui.EndChild()
-        if imgui.Button(u8("ГЏГ°Г®ГўГҐГ°ГЁГІГј Г®ГЎГ­Г®ГўГ«ГҐГ­ГЁГҐ Г±ГЄГ°ГЁГЇГІГ "), imgui.ImVec2(-1, 25)) then
-            checkUpdate(true)
-        end
-
-    elseif activeTab[0] == 3 then -- Г‚ГЉГ‹ГЂГ„ГЉГЂ ГЃГ“Г„Г“Г™Г…Г…
-        imgui.Text(u8"Г‡Г¤ГҐГ±Гј ГЇГ®ГїГўГїГІГ±Гї Г­Г®ГўГ»ГҐ ГґГіГ­ГЄГ¶ГЁГЁ...")
-        imgui.Text(u8"ГЌГ ГЇГ°ГЁГ¬ГҐГ°: Г«Г®ГЈ ГЇГ°Г®Г¤Г Г¦ ГЁГ«ГЁ Г±ГІГ ГІГЁГ±ГІГЁГЄГ .")
-    end
-
-    imgui.End()
-end)
-
-function samp.onServerMessage(color, text)
-    if color == -65281 and itemAdding[0] then
-        -- ГЏГ®ГЁГ±ГЄ ID
-        local itemId = text:match(":item(%d+):")
-        if itemId then
-            itemId = tonumber(itemId)
-            if tableIncludes(items, itemId) then
-                -- Г”Г®Г°Г¬Г ГІ: Г‚ГЂГЊ ГЃГ›Г‹ Г„ГЋГЃГЂГ‚Г‹Г…ГЌ ГЏГђГ…Г„ГЊГ…Г’ (Г­Г®ГўГ Гї Г±ГІГ°Г®ГЄГ ) ГЌГ Г§ГўГ Г­ГЁГҐ
-                local itemName = items_name[itemId] or "ГЏГ°ГҐГ¤Г¬ГҐГІ "..itemId
-                sendTelegramMessage("Г‚ГЂГЊ ГЃГ›Г‹ Г„ГЋГЃГЂГ‚Г‹Г…ГЌ ГЏГђГ…Г„ГЊГ…Г’\n" .. itemName)
-            else
-                -- Г”Г®Г°Г¬Г ГІ Г¤Г«Гї Г­ГҐГЁГ§ГўГҐГ±ГІГ­Г»Гµ
-				sendTelegramMessage("ГЏГ®Г«ГіГ·ГҐГ­ Г­ГҐГЁГ§ГўГҐГ±ГІГ­Г»Г© ГЇГ°ГҐГ¤Г¬ГҐГІ. ID: " .. itemId .. ". ГЏГ®Г¦Г Г«ГіГ©Г±ГІГ , Г¤Г®ГЎГ ГўГјГІГҐ ГҐГЈГ® Гў Г±ГЇГЁГ±Г®ГЄ.")
-            end
-        end
-    end
-end
-
-function checkUpdate(manual)
-    lua_thread.create(function()
-        if manual then sampAddChatMessage("[ItemLog] ГЏГ°Г®ГўГҐГ°ГЄГ  Г®ГЎГ­Г®ГўГ«ГҐГ­ГЁГ©...", -1) end
-        local requests = require('requests')
-        local ok, response = pcall(requests.get, UPDATE_URL)
-        if ok and response.status_code == 200 then
-            local remote_version = response.text:match('local SCRIPT_VERSION = "(.-)"')
-            if remote_version and remote_version ~= SCRIPT_VERSION then
-                sampAddChatMessage("[ItemLog] ГЌГ Г©Г¤ГҐГ­Г  Г­Г®ГўГ Гї ГўГҐГ°Г±ГЁГї: " .. remote_version, -1)
-                local file = io.open(thisScript().path, "w")
-                if file then
-                    file:write(response.text)
-                    file:close()
-                    sampAddChatMessage("[ItemLog] Г‘ГЄГ°ГЁГЇГІ Г®ГЎГ­Г®ГўГ«ГҐГ­! ГЏГҐГ°ГҐГ§Г ГЈГ°ГіГ§ГЄГ ...", -1)
-                    thisScript():reload()
-                end
-            elseif manual then
-                sampAddChatMessage("[ItemLog] ГЋГЎГ­Г®ГўГ«ГҐГ­ГЁГ© Г­ГҐ Г­Г Г©Г¤ГҐГ­Г®.", -1)
-            end
-        end
-    end)
-end
+script_properties('work-in-pause')local samp = require('samp.events')local effil = require('effil')local inicfg = require('inicfg')local ffi = require('ffi')local imgui = require('mimgui')local encoding = require('encoding')encoding.default = 'CP1251'local u8 = encoding.UTF8local SCRIPT_VERSION = "0.0.2" local UPDATE_URL = "https://github.com/dmashmakov2000-coder/item11/raw/refs/heads/main/Item.lua"local SCRIPT_CONFIG_NAME = 'Item'local SCRIPT_CONFIG_FILENAME = SCRIPT_CONFIG_NAME .. '.ini'-- Список предметов (ID)local items = {    1811, 555, 1425, 522, 4344, 5991, 1146, 731, 730, 673, 9726, 9697, 556, 557,    7480, 4794, 1769, 1639, 1638, 1637}-- Список названийlocal items_name = {    [1811] = "Bitcoin (BTC)",    [555] = "Бронзовая рулетка",    [1425] = "Платиновая рулетка",    [522] = "Семейный талон",    [4344] = "Талон +1 EXP ",    [5991] = "Грунт",    [1146] = "Гражданский талон",    [731] = "Аz-Coins",    [730] = "Аz-Coins",    [673] = "Талон EXP",    [9726] = "Лотерейный билет 2к26",    [9697] = "Монета Нового года (2026)",    [556] = "Серебряная рулетка",    [557] = "Золотая рулетка",    [7480] = "Ларец Fortnite",    [4794] = "Ларец Кладоискателя",    [1769] = "Супер Мото-ящик",    [1639] = "Rare box Blue",    [1638] = "Rare box Red",    [1637] = "Rare box Yellow",}local function tableIncludes(self, value)    for _, v in pairs(self) do if v == value then return true end end    return falseendlocal cfg = inicfg.load({    config = { chat = '', token = '', itemAdding = false }}, SCRIPT_CONFIG_NAME)local chat = imgui.new.char[128](tostring(cfg.config.chat))local token = imgui.new.char[128](tostring(cfg.config.token))local itemAdding = imgui.new.bool(cfg.config.itemAdding)local window = imgui.new.bool(false)local activeTab = imgui.new.int(1) -- 1: Настройки, 2: Уведомления, 3: Будущее-- Поток Telegramlocal effilTelegramSendMessage = effil.thread(function(text, chatID, token)    local requests = require('requests')    pcall(function()        requests.post(('https://api.telegram.org/bot%s/sendMessage'):format(token), {            params = { text = text, chat_id = chatID }        })    end)end)function url_encode(text)    local text = string.gsub(text, "([^%w-_ %.~=])", function(c)        return string.format("%%%02X", string.byte(c))    end)    return string.gsub(text, " ", "+")endfunction sendTelegramMessage(text)    local chat_id_str = ffi.string(chat)    local token_str = ffi.string(token)    if chat_id_str == '' or token_str == '' then return end    -- Используем u8:encode чтобы гарантировать UTF-8 для Telegram    effilTelegramSendMessage(url_encode(u8:encode(text)), chat_id_str, token_str)endfunction main()    while not isSampAvailable() do wait(0) end    sampAddChatMessage('{3083ff}[ItemLog] {ffffff}Активация: /item', -1)        sampRegisterChatCommand('item', function() window[0] = not window[0] end)    sampRegisterChatCommand('itemupdate', function() checkUpdate(true) end)    checkUpdate(false)    wait(-1)endimgui.OnInitialize(function() imgui.GetIO().IniFilename = nil end)imgui.OnFrame(function() return window[0] end, function()    local resX, resY = getScreenResolution()    imgui.SetNextWindowPos(imgui.ImVec2(resX / 2, resY / 2), imgui.Cond.FirstUseEver, imgui.ImVec2(0.5, 0.5))    imgui.SetNextWindowSize(imgui.ImVec2(350, 300), imgui.Cond.FirstUseEver)    imgui.Begin('Script [TM]', window, imgui.WindowFlags.NoResize)        -- Вкладки (Кнопки сверху)    if imgui.Button(u8"Настройки", imgui.ImVec2(105, 25)) then activeTab[0] = 1 end    imgui.SameLine()    if imgui.Button(u8"Уведомления", imgui.ImVec2(105, 25)) then activeTab[0] = 2 end    imgui.SameLine()    if imgui.Button(u8"Будущее", imgui.ImVec2(105, 25)) then activeTab[0] = 3 end        imgui.Separator()    if activeTab[0] == 1 then -- ВКЛАДКА НАСТРОЙКИ        imgui.PushItemWidth(200)        if imgui.InputText(u8('ИД Чат'), chat, ffi.sizeof(chat), imgui.InputTextFlags.Password) then            cfg.config.chat = ffi.string(chat)            inicfg.save(cfg, SCRIPT_CONFIG_FILENAME)        end        if imgui.InputText(u8('Токен'), token, ffi.sizeof(token), imgui.InputTextFlags.Password) then            cfg.config.token = ffi.string(token)            inicfg.save(cfg, SCRIPT_CONFIG_FILENAME)        end        imgui.PopItemWidth()        if imgui.Checkbox(u8('Включить уведомления о предметах'), itemAdding) then            cfg.config.itemAdding = itemAdding[0]            inicfg.save(cfg, SCRIPT_CONFIG_FILENAME)        end        imgui.SetCursorPosY(imgui.GetWindowHeight() - 40)        if imgui.Button(u8("Тест сообщения"), imgui.ImVec2(120, 25)) then            sendTelegramMessage("Это тестовое сообщение! Скрипт настроен верно.")            sampAddChatMessage("{00ff00}[ItemLog] Тестовое сообщение отправлено!", -1)        end    elseif activeTab[0] == 2 then -- ВКЛАДКА УВЕДОМЛЕНИЯ        imgui.Text(u8"Список отслеживаемых предметов:")        imgui.BeginChild("item_list", imgui.ImVec2(0, 180), true)        for id, name in pairs(items_name) do            imgui.TextColored(imgui.ImVec4(0.2, 0.5, 1.0, 1.0), "["..id.."] ")            imgui.SameLine()            imgui.Text(u8(name))        end        imgui.EndChild()        if imgui.Button(u8("Проверить обновление скрипта"), imgui.ImVec2(-1, 25)) then            checkUpdate(true)        end    elseif activeTab[0] == 3 then -- ВКЛАДКА БУДУЩЕЕ        imgui.Text(u8"Здесь появятся новые функции...")        imgui.Text(u8"Например: лог продаж или статистика.")		imgui.Text(u8"Здесь появятся новые функции...")        imgui.Text(u8"Например: лог продаж или статистика.")        imgui.Text(u8"Здесь появятся новые функции...")        imgui.Text(u8"Например: лог продаж или статистика.")		imgui.Text(u8"Здесь появятся новые функции...")        imgui.Text(u8"Например: лог продаж или статистика.")        imgui.Text(u8"Здесь появятся новые функции...")        imgui.Text(u8"Например: лог продаж или статистика.")		imgui.Text(u8"Здесь появятся новые функции...")        imgui.Text(u8"Например: лог продаж или статистика.")    end    imgui.End()end)function samp.onServerMessage(color, text)    if color == -65281 and itemAdding[0] then        -- Поиск ID        local itemId = text:match(":item(%d+):")        if itemId then            itemId = tonumber(itemId)            if tableIncludes(items, itemId) then                -- Формат: ВАМ БЫЛ ДОБАВЛЕН ПРЕДМЕТ (новая строка) Название                local itemName = items_name[itemId] or "Предмет "..itemId                sendTelegramMessage("Вам был добавлен предмет\n" .. itemName)            else                -- Формат для неизвестных				sendTelegramMessage("Получен неизвестный предмет. ID: " .. itemId .. ". Пожалуйста, добавьте его в список.")            end        end    endendfunction checkUpdate(manual)    lua_thread.create(function()        if manual then sampAddChatMessage("[ItemLog] Проверка обновлений...", -1) end        local requests = require('requests')        local ok, response = pcall(requests.get, UPDATE_URL)        if ok and response.status_code == 200 then            local remote_version = response.text:match('local SCRIPT_VERSION = "(.-)"')            if remote_version and remote_version ~= SCRIPT_VERSION then                sampAddChatMessage("[ItemLog] Найдена новая версия: " .. remote_version, -1)                local file = io.open(thisScript().path, "w")                if file then                    file:write(response.text)                    file:close()                    sampAddChatMessage("[ItemLog] Скрипт обновлен! Перезагрузка...", -1)                    thisScript():reload()                end            elseif manual then                sampAddChatMessage("[ItemLog] Обновлений не найдено.", -1)            end        end    end)end
