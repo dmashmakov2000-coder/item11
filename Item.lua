@@ -25,7 +25,7 @@ local effil_ok, effil = check_lib('effil')
 local requests_ok, requests_lib = check_lib('requests')
 
 -- === КОНФИГУРАЦИЯ СКРИПТА ===
-local SCRIPT_VERSION = "0.0.3.1" -- Обновляем версию
+local SCRIPT_VERSION = "0.0.3.5" -- Обновляем версию
 local UPDATE_URL = "https://raw.githubusercontent.com/dmashmakov2000-coder/item11/main/Item.lua" -- URL для автообновления
 local CFG_FILENAME = 'Script [TM].ini'
 
@@ -36,6 +36,8 @@ local update_check_in_progress = false
 -- === БАЗА ПРЕДМЕТОВ (из первого скрипта) ===
 
 local items_name = {
+[2149] = "Ларец олигарха",
+[5560] = "Cертификат Elegant",
 [7037] = "Билет розыгрыша",
 [9729] = "Кенгурятник для BMW волшебника 2026 ",
 [9730] = "Кенгурятник для ЧубВоз 26 ",
@@ -4844,7 +4846,8 @@ local default_config = {
         itemCollectionDelay = 7,
         payday = false,
         storage = false,
-        spawnSelect = false
+        spawnSelect = false,
+        enableUINotifications = true -- <--- ДОБАВЛЕНО: новая опция для включения/выключения UI уведомлений
     }
 }
 
@@ -4862,6 +4865,7 @@ local shortMessage = imgui.new.bool(cfg.config.shortMessage)
 local payday = imgui.new.bool(cfg.config.payday)
 local storage = imgui.new.bool(cfg.config.storage)
 local spawnSelect = imgui.new.bool(cfg.config.spawnSelect)
+local enableUINotifications = imgui.new.bool(cfg.config.enableUINotifications) -- <--- ДОБАВЛЕНО: UI переменная для новой опции
 
 local getPayday = false
 local listPayday = {}
@@ -4869,7 +4873,7 @@ local paydayTimeout = 0
 local PAYDAY_TIMEOUT_DURATION = 10
 
 local window = imgui.new.bool(false)
-local currentTab = imgui.new.int(1)
+local currentTab = imgui.new.int(1) -- 1: Настройки, 2: Уведомления
 
 local collectedItemNames = {}
 local lastItemReceiveTime = 0
@@ -4931,7 +4935,7 @@ function downloadAndInstallUpdate()
                 sampAddChatMessage("{00FF00}[TM] Скрипт обновлен! Перезагрузка...", -1)
                 thisScript():reload()
             else
-                sampAddChatMessage("{ff0000}[TM] Ошибка: Не удалось перезаписать файл. Запустите игру от имени админа.", -1)
+                sampAddChatMessage("{ff0000}[TM] Ошибка: Не удалось перезаписать файл.", -1)
             end
         else
             sampAddChatMessage("{ff0000}[TM] Ошибка при скачивании файла.", -1)
@@ -4950,7 +4954,7 @@ function checkUpdate()
             local remote_version = response.text:match('local%s+SCRIPT_VERSION%s*=%s*"([^"]+)"')
             if remote_version and remote_version ~= SCRIPT_VERSION then
                 update_available = true
-                remote_version_text = remote_version
+remote_version_text = remote_version
                 sampAddChatMessage("{00FF00}[TM] Найдено обновление: " .. remote_version .. ". Откройте /tm и перейдите в 'Настройки' для обновления.", -1)
             else
                 sampAddChatMessage("{00FF00}[TM] У вас актуальная версия скрипта.", -1)
@@ -4968,18 +4972,37 @@ local function saveConfig()
     cfg.config.sendUnknownItems = sendUnknownItems[0]
     cfg.config.shortMessage = shortMessage[0]
     cfg.config.itemCollectionDelay = itemCollectionDelay[0]
-    cfg.config.payday = payday[0]
+    cfg.config.payday = payday[0] 
     cfg.config.storage = storage[0]
     cfg.config.spawnSelect = spawnSelect[0]
+    cfg.config.enableUINotifications = enableUINotifications[0] -- <--- ДОБАВЛЕНО: сохранение новой опции
     inicfg.save(cfg, CFG_FILENAME)
 end
 
 -- Функция для отправки накопленных предметов
 local function sendCollectedItems()
     if #collectedItemNames > 0 then
-        local message = table.concat(collectedItemNames, "\n")
+        local message_parts = {}
+        
+        -- Добавляем заголовок. Используем shortMessage[1], так как индексация в Lua с 1
+        if shortMessage[1] then
+            table.insert(message_parts, "Вам был добавлен предмет")
+        else
+            -- Если короткие сообщения отключены, добавляем более развёрнутый заголовок
+            table.insert(message_parts, "Вы получили следующие предметы:")
+        end
+        
+        -- Добавляем названия всех собранных предметов
+        for _, item_name in ipairs(collectedItemNames) do
+            table.insert(message_parts, item_name)
+        end
+
+        -- Объединяем части сообщения через перенос строки
+        local message = table.concat(message_parts, "\n")
         sendTelegramMessage(message)
-        collectedItemNames = {} -- Очищаем список
+        
+        -- Очищаем список собранных предметов
+        collectedItemNames = {}
     end
 end
 
@@ -4994,16 +5017,102 @@ function main()
     wait(-1)
 end
 
+-- === CUSTOM IMGUI STYLE FROM YOUR white_style() FUNCTION ===
+function white_style()
+    imgui.SwitchContext()
+    local style = imgui.GetStyle() -- Получаем текущий стиль для удобства
+
+    style.WindowRounding        = 7.0
+    style.ChildRounding        = 7.0
+    style.FrameRounding        = 10.0
+    style.FramePadding        = imgui.ImVec2(5, 3)
+    style.WindowPadding        = imgui.ImVec2(8, 8)
+    style.ButtonTextAlign    = imgui.ImVec2(0.5, 0.5)
+    style.GrabMinSize        = 7
+    style.GrabRounding        = 15
+
+style.Colors[imgui.Col.WindowBg] = imgui.ImVec4(0.12, 0.12, 0.12, 0.94) -- Фон окна
+    style.Colors[imgui.Col.TitleBg] = imgui.ImVec4(0.10, 0.10, 0.10, 1.00) -- Фон заголовка
+    style.Colors[imgui.Col.TitleBgActive] = imgui.ImVec4(0.18, 0.18, 0.18, 1.00) -- Активный заголовок
+    style.Colors[imgui.Col.TitleBgCollapsed] = imgui.ImVec4(0.10, 0.10, 0.10, 0.75) -- Свернутый заголовок
+    style.Colors[imgui.Col.Text] = imgui.ImVec4(0.85, 0.85, 0.85, 1.00) -- Основной текст
+    style.Colors[imgui.Col.TextDisabled] = imgui.ImVec4(0.50, 0.50, 0.50, 1.00) -- Отключенный текст
+    style.Colors[imgui.Col.Border] = imgui.ImVec4(0.30, 0.30, 0.30, 0.50) -- Границы
+
+    -- Кнопки и интерактивные элементы
+    style.Colors[imgui.Col.Button] = imgui.ImVec4(0.26, 0.26, 0.26, 0.40) -- Кнопка
+    style.Colors[imgui.Col.ButtonHovered] = imgui.ImVec4(0.30, 0.30, 0.30, 1.00) -- Наведение
+    style.Colors[imgui.Col.ButtonActive] = imgui.ImVec4(0.40, 0.40, 0.40, 1.00) -- Активная
+    style.Colors[imgui.Col.FrameBg] = imgui.ImVec4(0.20, 0.20, 0.20, 0.54) -- Фон фрейма (input, checkbox)
+    style.Colors[imgui.Col.FrameBgHovered] = imgui.ImVec4(0.25, 0.25, 0.25, 0.78)
+    style.Colors[imgui.Col.FrameBgActive] = imgui.ImVec4(0.30, 0.30, 0.30, 1.00)
+
+    -- Accent color (например, для активных вкладок или слайдеров) - можете изменить
+    local accentColor = imgui.ImVec4(0.2, 0.6, 0.8, 1.0) -- Голубой
+    style.Colors[imgui.Col.Header] = accentColor -- Активная вкладка/сворачивающийся заголовок
+    style.Colors[imgui.Col.HeaderHovered] = imgui.ImVec4(accentColor.x + 0.1, accentColor.y + 0.1, accentColor.z + 0.1, 1.0)
+    style.Colors[imgui.Col.HeaderActive] = imgui.ImVec4(accentColor.x + 0.2, accentColor.y + 0.2, accentColor.z + 0.2, 1.0)
+    style.Colors[imgui.Col.CheckMark] = accentColor -- Галочка чекбокса
+    style.Colors[imgui.Col.SliderGrab] = accentColor -- Ползунок слайдера
+    style.Colors[imgui.Col.SliderGrabActive] = imgui.ImVec4(accentColor.x + 0.2, accentColor.y + 0.2, accentColor.z + 0.2, 1.0)
+    style.Colors[imgui.Col.Separator] = imgui.ImVec4(0.40, 0.40, 0.40, 0.50)
+    style.Colors[imgui.Col.SeparatorHovered] = imgui.ImVec4(0.60, 0.60, 0.60, 0.78)
+    style.Colors[imgui.Col.SeparatorActive] = imgui.ImVec4(0.80, 0.80, 0.80, 1.00)
+
+    -- Скругления
+    style.WindowRounding = 6.0 -- Скругление углов окна
+    style.FrameRounding = 4.0 -- Скругление углов фреймов (input, checkbox, button)
+    style.PopupRounding = 4.0
+    style.GrabRounding = 4.0 -- Скругление ползунка слайдера
+    style.TabRounding = 4.0 -- Скругление вкладок (если используются TabBar)
+
+    -- Отступы
+    style.WindowPadding = imgui.ImVec2(10, 10) -- Отступы внутри окна
+    style.FramePadding = imgui.ImVec2(6, 4) -- Отступы внутри фреймов
+    style.ItemSpacing = imgui.ImVec2(8, 4) -- Расстояние между элементами
+    style.ItemInnerSpacing = imgui.ImVec2(4, 4) -- Расстояние между элементами внутри групп
+    style.IndentSpacing = 20.0 -- Отступ для Indent
+    style.ScrollbarSize = 10.0
+    style.ScrollbarRounding = 9.0
+
+    -- Выравнивание
+    style.WindowTitleAlign = imgui.ImVec2(0.5, 0.5) -- Заголовок по центру
+    style.ButtonTextAlign = imgui.ImVec2(0.5, 0.5) -- Текст кнопки по центру
+
+    
+    -- Ваша оригинальная переопределяющая функция для кнопок:
+    -- Если она вам нужна, раскомментируйте ее. Но она может конфликтовать с предыдущими настройками кнопок.
+    -- local but_orig = imgui.Button
+    -- imgui.Button = function(...)
+    --     imgui.PushStyleColor(imgui.Col.Text, imgui.ImVec4(0.07, 0.07, 0.09, 1.00)) -- Темный текст
+    --     imgui.PushStyleColor(imgui.Col.Button, imgui.ImVec4(0.90, 0.90, 0.90, 1.00)) -- Светлый фон кнопки
+    --     imgui.PushStyleColor(imgui.Col.ButtonHovered, imgui.ImVec4(0.80, 0.80, 0.80, 1.00))
+    --     imgui.PushStyleColor(imgui.Col.ButtonActive, imgui.ImVec4(0.70, 0.70, 0.70, 1.00))
+    --     local result = but_orig(...)
+    --     imgui.PopStyleColor(4)
+    --     return result
+    -- end
+end	
+
+
 imgui.OnInitialize(function()
-    imgui.GetIO().IniFilename = nil
+    imgui.GetIO().IniFilename = nil -- Отключаем сохранение ini файла ImGui, т.к. у нас свой cfg
+    white_style() -- <--- ВЫЗЫВАЕМ ВАШУ ФУНКЦИЮ СТИЛЯ
 end)
 
 imgui.OnFrame(function() return window[0] end, function(player)
     local resX, resY = getScreenResolution()
-    local sizeX, sizeY = 320, 360
+    local sizeX, sizeY = 320, 360 -- Уменьшил размер окна для лучшего вида
     imgui.SetNextWindowPos(imgui.ImVec2(resX / 2, resY / 2), imgui.Cond.FirstUseEver, imgui.ImVec2(0.5, 0.5))
     imgui.SetNextWindowSize(imgui.ImVec2(sizeX, sizeY), imgui.Cond.FirstUseEver)
-    imgui.Begin('Script [TM] ' .. SCRIPT_VERSION, window, imgui.WindowFlags.NoResize + imgui.WindowFlags.NoCollapse)
+    
+    -- Используем SetNextWindowBgAlpha для установки прозрачности фона окна
+    -- Если ваша white_style() уже задает WindowBg, эта альфа может быть лишней или конфликтовать.
+    -- Если хотите, чтобы фон окна был полупрозрачным, оставьте эту строку.
+    -- imgui.SetNextWindowBgAlpha(0.90) -- 90% непрозрачности фона окна
+    
+imgui.Begin('Script [TM] ' .. SCRIPT_VERSION, window, imgui.WindowFlags.NoResize + imgui.WindowFlags.NoCollapse)
+
 
     -- Tabs
     if imgui.Button(u8('Настройки')) then currentTab[0] = 1 end
@@ -5017,11 +5126,14 @@ imgui.OnFrame(function() return window[0] end, function(player)
         imgui.Text(u8('Telegram:'))
         imgui.InputText(u8('ИД Чата'), chat, ffi.sizeof(chat), imgui.InputTextFlags.Password)
         imgui.InputText(u8('Токен'), token, ffi.sizeof(token), imgui.InputTextFlags.Password)
-
-        if imgui.Button(u8('Сохранить')) then saveConfig() end
+		if imgui.Button(u8('Сохранить')) then 
+            saveConfig() 
+            show_arz_notify('success', 'Настройки', 'Данные Telegram успешно сохранены!', 3000)
+        end
         imgui.SameLine()
         if imgui.Button(u8('Тест сообщения')) then
             sendTelegramMessage("Тестовое сообщение от Script [TM]!")
+            show_arz_notify('success', 'Тестовое сообщение', 'Тестовое сообщение отправлено', 5000)
         end
 
         imgui.Separator()
@@ -5031,41 +5143,99 @@ imgui.OnFrame(function() return window[0] end, function(player)
             imgui.PushStyleColor(imgui.Col.Text, imgui.ImVec4(0, 1, 0, 1))
             imgui.Text(u8('Доступна новая версия: ') .. remote_version_text)
             imgui.PopStyleColor()
-            if imgui.Button(u8('Обновить и перезагрузить')) then downloadAndInstallUpdate() end
+            
+            if imgui.Button(u8('Обновить и перезагрузить')) then 
+                show_arz_notify('warning', 'Обновление', 'Начинаем загрузку новой версии...', 5000)
+                downloadAndInstallUpdate() 
+            end
         else
             imgui.Text(u8('У вас актуальная версия.'))
-            if imgui.Button(u8('Проверить обновления')) then checkUpdate() end
+            if imgui.Button(u8('Проверить обновления')) then 
+                show_arz_notify('info', 'Обновление', 'Проверка обновлений...', 3000)
+                checkUpdate() 
+            end
         end
 
     elseif currentTab[0] == 2 then -- Уведомления
-        if imgui.Checkbox(u8('Оповещение о предметах'), itemAdding) then saveConfig() end
+        -- Галочка для визуальных уведомлений
+        if imgui.Checkbox(u8('Включить/выключить UI уведомления'), enableUINotifications) then
+            saveConfig()
+            local state = enableUINotifications[0] and "включены" or "выключены"
+            show_arz_notify('info', 'Интерфейс', 'Визуальные уведомления ' .. state, 3000)
+        end
+        imgui.SameLine()
+        imgui.TextDisabled('(?)')
+        if imgui.IsItemHovered() then
+            imgui.BeginTooltip()
+            imgui.Text(u8('Включает или выключает всплывающие уведомления в правом нижнем углу экрана (уведомления ARZ).'))
+            imgui.EndTooltip()
+        end
+        imgui.Separator()
+
+        -- Оповещение о предметах
+        if imgui.Checkbox(u8('Оповещение о предметах'), itemAdding) then 
+            saveConfig() 
+            local state = itemAdding[0] and "активировано" or "деактивировано"
+            show_arz_notify('info', 'Предметы', 'Отслеживание предметов ' .. state, 3000)
+        end
+  
         if itemAdding[0] then
             imgui.Indent(20)
-            if imgui.Checkbox(u8('Отправлять неизвестные предметы'), sendUnknownItems) then saveConfig() end
+            -- Неизвестные предметы
+            if imgui.Checkbox(u8('Отправлять неизвестные предметы'), sendUnknownItems) then 
+                saveConfig() 
+                local state = sendUnknownItems[0] and "будут отправляться" or "скрыты"
+                show_arz_notify('info', 'Настройка', 'Неизвестные предметы ' .. state, 3000)
+            end
 
+            -- Короткие сообщения
             if imgui.Checkbox(u8('Короткие сообщения (только название)'), shortMessage) then
                 saveConfig()
-                -- Если shortMessage включается, сбрасываем собранные предметы, чтобы они отправились немедленно
                 if shortMessage[0] then
-                    sendCollectedItems()
+                    sendCollectedItems() -- Отправляем сразу при смене режима, если есть что отправлять
+                    show_arz_notify('info', 'Режим сообщений', 'Включен компактный режим отправки', 3000)
+                else
+                    show_arz_notify('info', 'Режим сообщений', 'Включен полный режим (с текстом из чата)', 3000)
                 end
             end
 
-            -- Отображаем ползунок задержки ТОЛЬКО если включены короткие сообщения
+            -- Слайдер задержки
             if shortMessage[0] then
-                local textWidth = imgui.CalcTextSize(u8('Задержка отправки (сек)')).x
-                imgui.SetCursorPosX((imgui.GetWindowWidth() - textWidth) * 0.2)
                 imgui.Text(u8('Задержка отправки (сек)'))
                 if imgui.SliderFloat('##itemCollectionDelay', itemCollectionDelay, 0.0, 10.0, '%.1f') then
+                    -- При движении ползунка ничего не делаем, чтобы не лагало
+                end
+                if imgui.IsItemDeactivatedAfterEdit() then -- Сработает, когда закончили двигать ползунок
                     saveConfig()
+                    show_arz_notify('info', 'Задержка', ('Установлено: %.1f сек.'):format(itemCollectionDelay[0]), 3000)
                 end
             end
             imgui.Unindent(20)
         end
 
-        if imgui.Checkbox(u8('PayDay'), payday) then saveConfig() end
-        if imgui.Checkbox(u8('Хранилище'), storage) then saveConfig() end
-        if imgui.Checkbox(u8('Выбор места спавна'), spawnSelect) then saveConfig() end
+        -- PayDay
+        if imgui.Checkbox(u8('PayDay'), payday) then
+            saveConfig()
+            local state = payday[0] and "включены" or "выключены"
+            show_arz_notify('info', 'PayDay', 'Уведомления PayDay ' .. state, 3000)
+        end
+
+        -- Хранилище
+        if imgui.Checkbox(u8('Хранилище'), storage) then
+            saveConfig()
+            local state = storage[0] and "включены" or "выключены"
+            show_arz_notify('info', 'Хранилище', 'Уведомления о хранилище ' .. state, 3000)
+        end
+  
+        -- Выбор места спавна
+  if imgui.Checkbox(u8('Выбор места спавна'), spawnSelect) then
+            saveConfig()
+            if spawnSelect[0] then
+                show_arz_notify('info', 'Настройка', 'Уведомления о выборе спавна включены.', 3000)
+            else
+                show_arz_notify('info', 'Настройка', 'Уведомления о выборе спавна выключены.', 3000)
+            end
+  end
     end
 
     imgui.End()
@@ -5080,7 +5250,7 @@ function samp.onServerMessage(color, text)
     -- === Оповещение о предметах ===
     if itemAdding[0] then
         local itemId = tonumber(text:match(":item(%d+):"))
-        if itemId and color == -65281 then
+        if itemId and color == -65281 then -- Цвет для сообщений о получении предметов (обычно розовый)
             local itemName = items_name[itemId]
             if not itemName and not sendUnknownItems[0] then return end
 
@@ -5099,20 +5269,18 @@ function samp.onServerMessage(color, text)
             lastItemReceiveTime = os.time()
 
             -- Если включены короткие сообщения, отправляем сразу, если прошло время задержки
-            if shortMessage[0] then
-                local delay = itemCollectionDelay[0] or 7
-                if os.time() - lastItemReceiveTime >= delay then
-                    sendCollectedItems()
-                end
+            -- Это нужно, чтобы не накапливались сообщения, если игрок быстро получает предметы
+            local delay = itemCollectionDelay[0] or 7
+            if shortMessage[0] and (os.time() - lastItemReceiveTime >= delay) then
+                sendCollectedItems()
             end
         end
     end
 
     -- Автоматическая отправка накопленных предметов, если они есть
-    -- Это сработает, если:
+    -- Сработает, если:
     -- 1. itemAdding включен.
-    -- 2. shortMessage выключен (тогда задержка игнорируется, и предметы отправляются по одному).
-    -- 3. shortMessage включен, но прошло время задержки (чтобы последние предметы не остались висеть).
+    -- 2. shortMessage включен, и прошло время задержки (чтобы последние предметы не остались висеть).
     local delay = itemCollectionDelay[0] or 7
     if itemAdding[0] and #collectedItemNames > 0 and (os.time() - lastItemReceiveTime >= delay) then
         sendCollectedItems()
@@ -5133,24 +5301,60 @@ function samp.onServerMessage(color, text)
 
     -- === PayDay ===
     if payday[0] then
+        -- Отлавливаем начало блока PayDay
         if color and text:find('Банковский чек') then
             getPayday = true
             listPayday = {}
             paydayTimeout = os.time() + PAYDAY_TIMEOUT_DURATION
             table.insert(listPayday, text)
         elseif getPayday then
+            -- Собираем строки PayDay
             table.insert(listPayday, text)
         end
 
+        -- Отлавливаем конец блока PayDay (обычно линия из подчеркиваний)
         if color and text:find('__________________________________________________________________________') then
             if getPayday then
                 sendTelegramMessage(table.concat(listPayday, '\n'))
             end
-            getPayday = false
+            getPayday = false -- Сбрасываем флаг
+        -- Если тайм-аут истек, а блок PayDay не закончился, отправляем то, что успели собрать
         elseif getPayday and os.time() > paydayTimeout then
             sampAddChatMessage("{FF0000}[TM] Таймаут Payday, отправка неполных данных.", 0xFFFFFF)
             sendTelegramMessage(table.concat(listPayday, '\n'))
-            getPayday = false
+            getPayday = false -- Сбрасываем флаг
         end
     end
+end
+
+-- Функция для показа уведомлений ARZ (если включены)
+function show_arz_notify(type, title, text, time)
+    if enableUINotifications[0] then -- <--- ДОБАВЛЕНО: проверка настройки перед отображением уведомления
+        local function escape_js(s)
+            return s:gsub("\\", "\\\\"):gsub('"', '\\"')
+        end
+        local safe_type = escape_js(type)
+        local safe_title = escape_js(title)
+        local safe_text = escape_js(text)
+        local safe_time = tostring(time)
+        -- JavaScript строка для вызова события уведомлений
+        local str = ('window.executeEvent("event.notify.initialize", "[\\"%s\\", \\"%s\\", \\"%s\\", \\"%s\\"]");'):format(safe_type, safe_title, safe_text, safe_time)
+        visualCEF(str, true) -- Вызываем функцию для отправки CEF команды
+    end -- <--- ДОБАВЛЕНО: конец условия
+end
+
+-- Вспомогательная функция для отправки команд в CEF
+function visualCEF(str, is_encoded)
+    local bs = raknetNewBitStream()
+    raknetBitStreamWriteInt8(bs, 17)
+    raknetBitStreamWriteInt32(bs, 0)
+    raknetBitStreamWriteInt16(bs, #str)
+    raknetBitStreamWriteInt8(bs, is_encoded and 1 or 0)
+    if is_encoded then
+        raknetBitStreamEncodeString(bs, str)
+    else
+        raknetBitStreamWriteString(bs, str) 
+    end
+    raknetEmulPacketReceiveBitStream(220, bs)
+    raknetDeleteBitStream(bs)
 end
