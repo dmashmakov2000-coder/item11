@@ -31,15 +31,13 @@ local effil_ok, effil = check_lib('effil')
 local requests_ok, requests_lib = check_lib('requests')
 
 -- === КОНФИГУРАЦИЯ СКРИПТА ===
-local SCRIPT_VERSION = "0.0.4.1" -- Обновляем версию
+local SCRIPT_VERSION = "0.0.4.2" -- Обновляем версию
 local UPDATE_URL = "https://raw.githubusercontent.com/dmashmakov2000-coder/item11/main/Item.lua" -- URL для автообновления
 
 local UPDATE_INFO = [[
-0.0.4.0:
-- Добавлено всплывающее окно с информацией об обновлении.
-- Улучшена надежность парсинга информации об обновлении.
-- Исправлена критическая ошибка в логике сборщика предметов.
-- Добавлено несколько марок машин
+0.0.4.2:
+- Было добавлено новые предмеды из обновления 
+- От 30 Января
 ]]
 
 local CFG_FILENAME = 'Script [TM].ini'
@@ -54,6 +52,55 @@ local show_update_popup = imgui.new.bool(false)
 -- === БАЗА ПРЕДМЕТОВ ===
 
 local items_name = {
+
+
+
+		
+[9774] = "Легендарный предмет: Нашивка Экономиста  (19300)",
+[9790] = "Сертификат BMW M5 G90 2k26  (1307)",
+[9788] = "Основной набор характеристик для скина  (19300)",
+[9789] = "Распределитель лимитки  (19300)",
+[9787] = "Желтый Набор характеристик для аксессуара  (19300)",
+[9785] = "Осколок сертификата Mclaren 570s Carbon  (19300)",
+[9786] = "Основной набор характеристик для аксессуара  (19300)",
+[1078] = "Аксессуар: Бензопила  (341)",
+[9776] = "Скин: Старк",
+[9775] = "Скин: Каноне",
+[9772] = "Сертификат Mclaren 570s Carbon  (1306)",
+[9773] = "Тюнинг-пак BMW M5 Mansory  (19300)",
+[9770] = "Дивидендный договор (Временный)",
+[9771] = "Осколок запчастей фуры",
+[9769] = "Дивидендный договор",
+[9767] = "Осколок скина ‘Бо Джек’  (19300)",
+[9768] = "Осколок скина ‘Наследник Дома’  (19300)",
+[9765] = "Запечатанный: Обувь Фрирен  (19300)",
+[9766] = "Осколок скина ‘Фрирен’  (19300)",
+[9764] = "Кейс Нового Сезона",
+[9762] = "Осколок Тайника Фрирен",
+[9761] = "Тайник Фрирен",
+[9674] = "Легендарная одежда: Скин: Наследник Дома",
+[9550] = "Легендарная одежда: Скин: Григорий",
+[7025] = "Легендарная одежда: Скин: Оптимус Прайм",
+[7023] = "Легендарная одежда: Скин: Бамблби",
+[9758] = "Вирты Чубрика",
+[9759] = "Вирты Чубрика (непередаваемые)",
+[9757] = "Сэт Ведьмы +1500  (3639)",
+[9755] = "Сэт Берсерка +1500  (3639)",
+[9756] = "Сэт Ведьмы +1800  (3639)",
+[9754] = "Сэт Берсерка +1800  (3639)",
+[9752] = "Сэт Медведя +1900  (3639)",
+[9753] = "Сэт Медведя +1800  (3639)",
+[9751] = "Сэт Медведя +1000  (3639)",
+[9749] = "Сэт Медведя +1200  (3639)",
+[9750] = "Сэт Медведя +1100  (3639)",
+[9748] = "Сэт Медведя +1300  (3639)",
+[9746] = "Сэт Медведя +1500  (3639)",
+[9747] = "Сэт Медведя +1400  (3639)",
+[9745] = "Сэт Медведя +1600  (3639)",
+[9743] = "Легендарный предмет: Набор Лимитки",
+[9744] = "Сэт Медведя +1700  (3639)",
+[9742] = "Легендарный предмет:  Золотой набор реставрации для аксессуара",
+[673] = "Аптечка",
 [2149] = "Ларец олигарха",
 [5560] = "Cертификат Elegant",
 [7037] = "Билет розыгрыша",
@@ -122,7 +169,6 @@ local items_name = {
 [9680] = "Осколок Тайника Медведя",
 [9678] = "Тайник Медведя",
 [9675] = "Скин: Заблокированный Роблокс",
-[9674] = "Скин: Киран Калкин",
 [9671] = "Легендарная одежда: Скин: Ник",
 [9670] = "Легендарная одежда: Скин: Джуди",
 [9669] = "Скин: Эльф",
@@ -171,7 +217,6 @@ local items_name = {
 [9553] = "Скин: Боджек",
 [9551] = "Скин: Новогодний Филип",
 [9552] = "Легендарная одежда: Скин: Верка Сердючка",
-[9550] = "Скин: Лепс",
 [9548] = "Скин: Фрирен",
 [9549] = "Скин: Молодой лесоруб",
 [9547] = "Сертификат BMW I8 Глента ",
@@ -628,9 +673,7 @@ local items_name = {
 [7036] = "Сертификат охранника ‘Элли’ ",
 [7027] = "Скин: Шэгги",
 [7029] = "Скин: Велма",
-[7025] = "Скин: Оптимус Прайм",
 [7021] = "Сертификат охранника ‘Hitmans’ ",
-[7023] = "Скин: Бамблби",
 [6998] = "Сертификат охранника ‘Хранитель’ ",
 [6999] = "Сертификат охранника ‘Собака Катсу’ ",
 [8460] = "Резиновая уточка на крышу [деталь тюнинга] ",
@@ -3047,7 +3090,7 @@ local items_name = {
 [560] = "Яд ",
 [1074] = "Цветы ",
 [5818] = "Талон на платную парковку ",
-[1078] = "Бензопила ",
+
 [1172] = "Военный билет ",
 [4823] = "Улучшение: Дополнительные 6 ячеек инвентаря ",
 [5304] = "Семейная репутация (1000 ед.) (донат) ",
@@ -4865,7 +4908,8 @@ local default_config = {
         payday = false,
         storage = false,
         spawnSelect = false,
-        enableUINotifications = true
+        enableUINotifications = true,
+        quest = true
     }
 }
 
@@ -4882,6 +4926,7 @@ local shortMessage = imgui.new.bool(cfg.config.shortMessage)
 local payday = imgui.new.bool(cfg.config.payday)
 local storage = imgui.new.bool(cfg.config.storage)
 local spawnSelect = imgui.new.bool(cfg.config.spawnSelect)
+local quest = imgui.new.bool(cfg.config.quest)
 local enableUINotifications = imgui.new.bool(cfg.config.enableUINotifications)
 
 local getPayday = false
@@ -5000,6 +5045,7 @@ local function saveConfig()
     cfg.config.itemCollectionDelay = itemCollectionDelay[0]
     cfg.config.payday = payday[0]
     cfg.config.storage = storage[0]
+    cfg.config.quest = quest[0]
     cfg.config.spawnSelect = spawnSelect[0]
     cfg.config.enableUINotifications = enableUINotifications[0]
     inicfg.save(cfg, CFG_FILENAME)
@@ -5109,9 +5155,9 @@ function white_style()
     style.GrabMinSize           = 7
     style.GrabRounding          = 15
 
-    style.Colors[imgui.Col.WindowBg] = imgui.ImVec4(0.12, 0.12, 0.12, 0.94)
+    style.Colors[imgui.Col.WindowBg] = imgui.ImVec4(0.12, 0.12, 0.12, 0.94) -- фон
     style.Colors[imgui.Col.TitleBg] = imgui.ImVec4(0.10, 0.10, 0.10, 1.00)
-    style.Colors[imgui.Col.TitleBgActive] = imgui.ImVec4(0.18, 0.18, 0.18, 1.00)
+    style.Colors[imgui.Col.TitleBgActive] = imgui.ImVec4(0.18, 0.18, 0.18, 1.00) -- название
     style.Colors[imgui.Col.TitleBgCollapsed] = imgui.ImVec4(0.10, 0.10, 0.10, 0.75)
     style.Colors[imgui.Col.Text] = imgui.ImVec4(0.85, 0.85, 0.85, 1.00)
     style.Colors[imgui.Col.TextDisabled] = imgui.ImVec4(0.50, 0.50, 0.50, 1.00)
@@ -5252,7 +5298,7 @@ imgui.Begin('Script [TM] ' .. SCRIPT_VERSION, nil, imgui.WindowFlags.NoResize + 
                 -- Слайдер задержки (1 до 30 секунд) - ВИДЕН ТОЛЬКО ПРИ ВКЛЮЧЕННЫХ КОРОТКИХ СООБЩЕНИЯХ
                 if shortMessage[0] then
                     imgui.Text(u8('Задержка отправки (сек)'))
-                    if imgui.SliderFloat('##itemCollectionDelay', itemCollectionDelay, 1.0, 30.0, '%.1f') then
+                    if imgui.SliderFloat('##itemCollectionDelay', itemCollectionDelay, 0.0, 30.0, '%.1f') then
                         -- При движении ползунка ничего не делаем
                     end
                     
@@ -5278,6 +5324,11 @@ imgui.Begin('Script [TM] ' .. SCRIPT_VERSION, nil, imgui.WindowFlags.NoResize + 
                 saveConfig()
                 local state = storage[0] and "включены" or "выключены"
                 show_arz_notify('info', 'Хранилище', 'Уведомления о хранилище ' .. state, 3000)
+            end
+		    if imgui.Checkbox(u8('квесты/задания'), quest) then
+                saveConfig()
+                local state = quest[0] and "включены" or "выключены"
+                show_arz_notify('info', 'квесты/задания', 'Уведомления о хранилище ' .. state, 3000)
             end
       
             -- Выбор места спавна
@@ -5308,7 +5359,7 @@ imgui.Begin('Script [TM] ' .. SCRIPT_VERSION, nil, imgui.WindowFlags.NoResize + 
     -- === ВСПЛЫВАЮЩЕЕ ОКНО "ИНФОРМАЦИЯ ОБ ОБНОВЛЕНИИ" ===
     if show_update_popup[0] then
     imgui.SetNextWindowPos(imgui.ImVec2(resX/2, resY/2), imgui.Cond.Appearing, imgui.ImVec2(0.5, 0.5))
-    imgui.SetNextWindowSize(imgui.ImVec2(400, 180), imgui.Cond.Appearing)
+    imgui.SetNextWindowSize(imgui.ImVec2(400, 280), imgui.Cond.Appearing)
 
     -- ВТОРОЙ АРГУМЕНТ = nil (чтобы убрать крестик), НО НЕ NoTitleBar (чтобы заголовок остался)
     imgui.Begin(u8('Информация об обновлении'), nil,
@@ -5374,7 +5425,64 @@ function samp.onServerMessage(color, text)
     if spawnSelect[0] and text:find("Вы выбрали местом спавна") then
         sendTelegramMessage(text)
     end
+	
+        -- НОВОЕ: === Боевой Пропуск ===
+-- === Боевой Пропуск (точная фильтрация и красивый вывод) ===
+if quest[0] then
+    -- Очищаем от цветовых кодов вида {RRGGBB}
+    local cleaned = text:gsub("{%x%x%x%x%x%x}", "")
+    -- Убираем начальные/конечные пробелы
+    cleaned = cleaned:gsub("^%s+", ""):gsub("%s+$", "")
 
+    -- Проверяем, что сообщение начинается именно с "[Боевой Пропуск]"
+    if cleaned:find("^%[Боевой Пропуск%]") then
+        -- Получаем часть сообщения после префикса "[Боевой Пропуск]"
+        local body = cleaned:match("^%[Боевой Пропуск%]%s*(.*)") or ""
+
+        local event_type = nil    -- Например: "забрал" или "выполнил задание"
+        local item_or_task_name = nil -- Название предмета или задания
+        local final_message_part = "" -- Часть сообщения после типа события
+
+        -- Шаблон 1: "Вы успешно забрали предмет - 'НАЗВАНИЕ'"
+        local item_pickup_match = body:match("^Вы%s+успешно%s+забрали%s+предмет%s*%-%s*'([^']+)'")
+        if item_pickup_match then
+            event_type = "забрал"
+            item_or_task_name = item_pickup_match
+            final_message_part = "Предмет " .. item_or_task_name
+        end
+
+        -- Шаблон 2: "Вы успешно забрали - 'НАЗВАНИЕ'" (для опыта или валюты)
+        if not item_or_task_name then -- Проверяем, если предыдущий шаблон не сработал
+            local xp_pickup_match = body:match("^Вы%s+успешно%s+забрали%s*%-%s*'([^']+)'")
+            if xp_pickup_match then
+                event_type = "забрал"
+                item_or_task_name = xp_pickup_match
+                final_message_part = "Предмет " .. item_or_task_name
+            end
+        end
+
+        -- Шаблон 3: "Вы успешно выполнили задание - 'НАЗВАНИЕ'"
+        if not item_or_task_name then -- Проверяем, если предыдущие шаблоны не сработали
+            local task_complete_match = body:match("^Вы%s+успешно%s+выполнили%s+задание%s*%-%s*'([^']+)'")
+            if task_complete_match then
+                event_type = "выполнил задание"
+                item_or_task_name = task_complete_match
+                final_message_part = item_or_task_name -- Здесь не добавляем "Предмет"
+            end
+        end
+
+        -- Если мы нашли совпадение по одному из шаблонов, формируем и отправляем сообщение
+        if event_type and item_or_task_name then
+            local telegram_message = "[Боевой Пропуск]\n" .. event_type .. "\n" .. final_message_part
+            sendTelegramMessage(telegram_message)
+        end
+        -- Если ни один шаблон не совпал, это другое сообщение Боевого Пропуска, и мы его игнорируем.
+    end
+end
+
+
+	
+	
     -- === Хранилище предметов ===
     if storage[0] then
         if text:find("Добавлен новый предмет") or text:find("Вы забрали предмет") then
@@ -5409,5 +5517,5 @@ function samp.onServerMessage(color, text)
             getPayday = false -- Сбрасываем флаг
         end
     end
-end
 
+end
