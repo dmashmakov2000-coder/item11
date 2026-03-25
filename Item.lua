@@ -31,24 +31,27 @@ local effil_ok, effil = check_lib('effil')
 local requests_ok, requests_lib = check_lib('requests')
 
 -- === КОНФИГУРАЦИЯ СКРИПТА ===
-local SCRIPT_VERSION = "0.0.4.2" -- Обновляем версию
+local SCRIPT_VERSION = "0.0.4.3" -- Обновляем версию до 0.0.4.4 после исправлений
 local UPDATE_URL = "https://raw.githubusercontent.com/dmashmakov2000-coder/item11/main/Item.lua" -- URL для автообновления
-
-local UPDATE_INFO = [[
-0.0.4.2:
-- Было добавлено новые предмеды из обновления 
-- От 30 Января
-]]
-
 local CFG_FILENAME = 'Script [TM].ini'
 
--- Переменные для автообновления и информации
-local remote_version_text = SCRIPT_VERSION
-local update_available = false
-local update_check_in_progress = false
-local remote_update_info = "" 
-local show_update_popup = imgui.new.bool(false) 
+-- Ваша личная ссылка Cloudflare Worker
+local ANTIBLOCK_URL = "https://cold-sun-3bad.dmashmakov2000.workers.dev"
+local DEFAULT_API = "https://api.telegram.org"
 
+-- Информация об обновлениях (для всплывающего окна)
+local UPDATE_INFO = [[
+0.0.4.3:
+- Исправлены критические ошибки, из-за которых скрипт не запускался.
+- Улучшена обработка ошибок отправки Telegram-сообщений.
+- Рабочий интерфейс облочного сервиса для обхода блокировок.
+- Добавлена галочка Включения обхода в настройках
+
+]]
+
+-- === БАЗА ПРЕДМЕТОВ ===
+-- Эту таблицу нужно заполнить или убедиться, что она существует
+-- (если ее нет, скрипт не упадет, но предметы будут отображаться как "ID: <номер>")
 -- === БАЗА ПРЕДМЕТОВ ===
 
 local items_name = {
@@ -4897,14 +4900,17 @@ local items_name = {
 }
 
 
+
+-- === КОНФИГУРАЦИЯ ПО УМОЛЧАНИЮ ===
 local default_config = {
     config = {
         chat = '',
         token = '',
+        useAntiBlock = true, -- Галочка по умолчанию включена
         itemAdding = false,
         sendUnknownItems = false,
         shortMessage = false,
-        itemCollectionDelay = 7.0, -- Значение по умолчанию
+        itemCollectionDelay = 7.0,
         payday = false,
         storage = false,
         spawnSelect = false,
@@ -4912,14 +4918,29 @@ local default_config = {
         quest = true
     }
 }
+-- === ПЕРЕМЕННЫЕ ДЛЯ АВТООБНОВЛЕНИЯ ===
+local remote_version_text = SCRIPT_VERSION
+local update_available = false
+local update_check_in_progress = false
+local remote_update_info = "" 
+local show_update_popup = imgui.new.bool(false) 
 
+-- === ЗАГРУЗКА КОНФИГА ===
 local cfg
 local ok_cfg, err_cfg = pcall(inicfg.load, default_config, CFG_FILENAME)
-if ok_cfg then cfg = err_cfg else cfg = default_config end
+if ok_cfg then 
+    cfg = err_cfg 
+else 
+    cfg = default_config 
+    print(('[TM] Error loading config or config file not found. Using default. Error: %s'):format(err_cfg or 'N/A'))
+end
 
--- Инициализация переменных UI
+
+-- === ИНИЦИАЛИЗАЦИЯ ПЕРЕМЕННЫХ UI ===
 local chat = imgui.new.char[128](tostring(cfg.config.chat))
 local token = imgui.new.char[128](tostring(cfg.config.token))
+local useAntiBlock = imgui.new.bool(cfg.config.useAntiBlock or true)
+
 local itemAdding = imgui.new.bool(cfg.config.itemAdding)
 local sendUnknownItems = imgui.new.bool(cfg.config.sendUnknownItems)
 local shortMessage = imgui.new.bool(cfg.config.shortMessage)
@@ -4941,53 +4962,62 @@ local collectedItemNames = {}
 local itemCollectionDelay = imgui.new.float(cfg.config.itemCollectionDelay)
 
 -- === ПЕРЕМЕННЫЕ ДЛЯ НАДЕЖНОГО СБОРЩИКА ===
-local lastItemReceiveTime = 0 -- Время (os.time()) последнего полученного предмета
-local itemCollectorActive = false -- Флаг, что сборщик активен и ждет
+local lastItemReceiveTime = 0 
+local itemCollectorActive = false 
 -- =========================================
 
--- Определение effilTelegramSendMessage
-local effilTelegramSendMessage = effil_ok and effil.thread(function(text, chatID, token)
-    if not requests_ok then
-        sampAddChatMessage('{FF0000}[TM] Ошибка: Библиотека "requests" не найдена для отправки Telegram.', 0xFFFFFF)
-        print("[TM] Ошибка: Библиотека 'requests' не найдена для отправки Telegram.")
-        return
-    end
+-- === ОПРЕДЕЛЕНИЕ effilTelegramSendMessage ===
+local effilTelegramSendMessage = effil_ok and effil.thread(function(text, chatID, token, baseUrl)
     local requests = require('requests')
+    
+    local post_data = {
+        params = { text = text, chat_id = chatID }
+    }
+
     local ok, res = pcall(function()
-        return requests.post(('https://api.telegram.org/bot%s/sendMessage'):format(token), {
-            params = { text = text, chat_id = chatID }
-        })
+        local url = ("%s/bot%s/sendMessage"):format(baseUrl, token)
+        return requests.post(url, post_data)
     end)
+    
     if not ok then
-        sampAddChatMessage('{FF0000}[TM] Ошибка отправки сообщения в Telegram: ' .. (res or 'Неизвестная ошибка'), 0xFFFFFF)
-        print("[TM] Ошибка отправки сообщения в Telegram: " .. (res or 'Неизвестная ошибка'))
+        print(('[TM] Ошибка отправки Telegram: %s'):format(res or 'Unknown'))
+        sampAddChatMessage(("{FF0000}[TM] Ошибка отправки сообщения в Telegram: %s"):format(res or 'Неизвестно'), -1)
     end
 end) or nil
 
+-- === ФУНКЦИЯ КОДИРОВАНИЯ URL ===
 function url_encode(text)
     local text = string.gsub(text, "([^%w-_ %.~=])", function(c) return string.format("%%%02X", string.byte(c)) end)
     return string.gsub(text, " ", "+")
 end
 
+-- === ФУНКЦИЯ ОТПРАВКИ СООБЩЕНИЯ В TELEGRAM ===
 local function sendTelegramMessage(text)
-    local chat_id_str, token_str = ffi.string(chat), ffi.string(token)
-	    if chat_id_str == '' or token_str == '' then
+    local chat_id_str = ffi.string(chat)
+    local token_str = ffi.string(token)
+
+    if chat_id_str == '' or token_str == '' then 
         sampAddChatMessage('{FFFF00}[TM] Предупреждение: ID чата или токен Telegram не указаны.', 0xFFFFFF)
-        return
+        return 
     end
-    if not effilTelegramSendMessage then
+    if not effilTelegramSendMessage then 
         sampAddChatMessage('{FF0000}[TM] Ошибка: Не удалось инициализировать effil Telegram поток.', 0xFFFFFF)
-        return
+        return 
     end
+    
+    -- Выбираем URL: либо ваш Cloudflare, либо стандартный
+    local finalUrl = useAntiBlock[0] and ANTIBLOCK_URL or DEFAULT_API
+    
     local clean_text = text:gsub('{......}', '')
-    effilTelegramSendMessage(url_encode(u8(clean_text)), chat_id_str, token_str)
+    effilTelegramSendMessage(url_encode(u8(clean_text)), chat_id_str, token_str, finalUrl)
 end
 
+-- === ФУНКЦИЯ АВТООБНОВЛЕНИЯ ===
 function downloadAndInstallUpdate()
     if not requests_ok then
         sampAddChatMessage("{ff0000}[TM] Ошибка: Библиотека 'requests' не найдена. Невозможно обновить.", -1)
         return
-    end
+end
     sampAddChatMessage("{ffff00}[TM] Загрузка обновления...", -1)
     lua_thread.create(function()
         local requests = require('requests')
@@ -5004,7 +5034,7 @@ function downloadAndInstallUpdate()
                 sampAddChatMessage("{ff0000}[TM] Ошибка: Не удалось перезаписать файл.", -1)
             end
         else
-            sampAddChatMessage("{ff0000}[TM] Ошибка при скачиваниифайла.", -1)
+            sampAddChatMessage("{ff0000}[TM] Ошибка при скачивании файла.", -1)
         end
     end)
 end
@@ -5036,9 +5066,12 @@ function checkUpdate()
     end)
 end
 
+-- === СОХРАНЕНИЕ КОНФИГА ===
 local function saveConfig()
     cfg.config.chat = ffi.string(chat)
     cfg.config.token = ffi.string(token)
+    cfg.config.useAntiBlock = useAntiBlock[0] 
+
     cfg.config.itemAdding = itemAdding[0]
     cfg.config.sendUnknownItems = sendUnknownItems[0]
     cfg.config.shortMessage = shortMessage[0]
@@ -5048,10 +5081,15 @@ local function saveConfig()
     cfg.config.quest = quest[0]
     cfg.config.spawnSelect = spawnSelect[0]
     cfg.config.enableUINotifications = enableUINotifications[0]
-    inicfg.save(cfg, CFG_FILENAME)
+    
+    local ok, err = pcall(inicfg.save, cfg, CFG_FILENAME)
+    if not ok then
+        print(('[TM] Error saving config: %s'):format(err))
+        sampAddChatMessage(("{FF0000}[TM] Ошибка сохранения конфига: %s"):format(err or 'Неизвестно'), -1)
+    end
 end
 
--- Функция для отправки накопленных предметов
+-- === ФУНКЦИЯ ОТПРАВКИ СОБРАННЫХ ПРЕДМЕТОВ ===
 local function sendCollectedItems()
     if #collectedItemNames > 0 then
         local message_parts = {}
@@ -5073,23 +5111,20 @@ local function sendCollectedItems()
     end
 end
 
--- === ОСНОВНОЙ ЦИКЛ СБОРЩИКА ПРЕДМЕТОВ (НАДЕЖНЫЙ МЕТОД) ===
+-- === ОСНОВНОЙ ЦИКЛ СБОРЩИКА ПРЕДМЕТОВ ===
 local function itemCollectorLoop()
     while true do
-        wait(100) -- Проверяем каждые 100 мс
-        
+        wait(100) 
         if itemAdding[0] and itemCollectorActive and #collectedItemNames > 0 then
             local delay = itemCollectionDelay[0] or 7.0
-            
-            -- Проверяем, прошло ли достаточно времени с момента последнего получения
             if os.time() - lastItemReceiveTime >= delay then
                 sendCollectedItems()
-                itemCollectorActive = false -- Сбрасываем флаг, пока не придет новый предмет
+                itemCollectorActive = false 
             end
         end
     end
 end
--- =========================================================
+-- =========================================
 
 function main()
     while not isSampAvailable() do wait(0) end
@@ -5099,14 +5134,12 @@ function main()
     sampAddChatMessage('Script [TM] {ffffff}Версия скрипта ' .. SCRIPT_VERSION, 0x3083ff)
     sampRegisterChatCommand('tm', function() window[0] = not window[0] end)
     
-    -- Запускаем постоянный цикл сборщика
-    lua_thread.create(itemCollectorLoop)
-    
+    lua_thread.create(itemCollectorLoop) -- Запуск цикла сборщика
     checkUpdate()
-    wait(-1)
+    wait(-1) -- Скрипт остается активным
 end
 
--- Функция для показа уведомлений ARZ (если включены)
+-- === ФУНКЦИЯ ДЛЯ UI УВЕДОМЛЕНИЙ ARZ ===
 function visualCEF(str, is_encoded)
     local bs = raknetNewBitStream()
     raknetBitStreamWriteInt8(bs, 17)
@@ -5155,9 +5188,9 @@ function white_style()
     style.GrabMinSize           = 7
     style.GrabRounding          = 15
 
-    style.Colors[imgui.Col.WindowBg] = imgui.ImVec4(0.12, 0.12, 0.12, 0.94) -- фон
+    style.Colors[imgui.Col.WindowBg] = imgui.ImVec4(0.12, 0.12, 0.12, 0.94)
     style.Colors[imgui.Col.TitleBg] = imgui.ImVec4(0.10, 0.10, 0.10, 1.00)
-    style.Colors[imgui.Col.TitleBgActive] = imgui.ImVec4(0.18, 0.18, 0.18, 1.00) -- название
+    style.Colors[imgui.Col.TitleBgActive] = imgui.ImVec4(0.18, 0.18, 0.18, 1.00)
     style.Colors[imgui.Col.TitleBgCollapsed] = imgui.ImVec4(0.10, 0.10, 0.10, 0.75)
     style.Colors[imgui.Col.Text] = imgui.ImVec4(0.85, 0.85, 0.85, 1.00)
     style.Colors[imgui.Col.TextDisabled] = imgui.ImVec4(0.50, 0.50, 0.50, 1.00)
@@ -5184,7 +5217,7 @@ function white_style()
     style.WindowRounding = 6.0
     style.FrameRounding = 4.0
     style.PopupRounding = 4.0
-	style.GrabRounding = 4.0
+ style.GrabRounding = 4.0
     style.TabRounding = 4.0
 
     style.WindowPadding = imgui.ImVec2(10, 10)
@@ -5208,8 +5241,7 @@ imgui.OnFrame(function() return window[0] or show_update_popup[0] end, function(
         imgui.SetNextWindowPos(imgui.ImVec2(resX / 2, resY / 2), imgui.Cond.FirstUseEver, imgui.ImVec2(0.5, 0.5))
         imgui.SetNextWindowSize(imgui.ImVec2(sizeX, sizeY), imgui.Cond.FirstUseEver)
 
-imgui.Begin('Script [TM] ' .. SCRIPT_VERSION, nil, imgui.WindowFlags.NoResize + imgui.WindowFlags.NoCollapse)
-
+        imgui.Begin('Script [TM] ' .. SCRIPT_VERSION, nil, imgui.WindowFlags.NoResize + imgui.WindowFlags.NoCollapse)
 
         -- Tabs
         if imgui.Button(u8('Настройки')) then currentTab[0] = 1 end
@@ -5222,17 +5254,24 @@ imgui.Begin('Script [TM] ' .. SCRIPT_VERSION, nil, imgui.WindowFlags.NoResize + 
         imgui.BeginChild("##content_scroll", imgui.ImVec2(imgui.GetWindowWidth() - 20, imgui.GetWindowHeight() - 110), false)
 
         if currentTab[0] == 1 then -- Настройки
-            imgui.Text(u8('Telegram:'))
+            imgui.Text(u8('Telegram Основное:'))
             imgui.InputText(u8('ИД Чата'), chat, ffi.sizeof(chat), imgui.InputTextFlags.Password)
             imgui.InputText(u8('Токен'), token, ffi.sizeof(token), imgui.InputTextFlags.Password)
+            
+            imgui.Separator()
+            imgui.Text(u8('Обход блокировки'))
+            if imgui.Checkbox(u8('Использовать обход блокировки'), useAntiBlock) then
+                saveConfig()
+            end
+                        
             if imgui.Button(u8('Сохранить'), imgui.ImVec2(130, 25)) then
                 saveConfig()
-                show_arz_notify('success', 'Настройки', 'Данные Telegram успешно сохранены!', 5000)
+                show_arz_notify('success', 'Настройки', 'Данные сохранены!', 5000)
             end
             imgui.SameLine()
             if imgui.Button(u8('Тест'), imgui.ImVec2(130, 25)) then
                 sendTelegramMessage("Тестовое сообщение от Script [TM]!")
-                show_arz_notify('success', 'Тестовое сообщение', 'Тестовое сообщение отправлено', 5000)
+                show_arz_notify('info', 'Тест', 'Запрос отправлен', 3000)
             end
             imgui.Separator()
             imgui.Text(u8('Автообновление:'))
@@ -5240,11 +5279,10 @@ imgui.Begin('Script [TM] ' .. SCRIPT_VERSION, nil, imgui.WindowFlags.NoResize + 
             if update_available then
                 imgui.PushStyleColor(imgui.Col.Text, imgui.ImVec4(0, 1, 0, 1))
                 imgui.Text(u8('Доступна версия: ') .. remote_version_text)
-                imgui.PopStyleColor()
+				imgui.PopStyleColor()
 
-                -- КНОПКА ОТКРЫВАЮЩАЯ ВСПЛЫВАЮЩЕЕ ОКНО
                 if imgui.Button(u8('Информация об обновлении'), imgui.ImVec2(-1, 25)) then
-                    show_update_popup[0] = true -- <--- ОТКРЫВАЕМ НОВОЕ ОКНО
+                    show_update_popup[0] = true 
                 end
 
                 if imgui.Button(u8('Обновить скрипт'), imgui.ImVec2(-1, 25)) then downloadAndInstallUpdate() end
@@ -5254,7 +5292,6 @@ imgui.Begin('Script [TM] ' .. SCRIPT_VERSION, nil, imgui.WindowFlags.NoResize + 
             end
 
         elseif currentTab[0] == 2 then -- Уведомления
-            -- Галочка для визуальных уведомлений
             if imgui.Checkbox(u8('Включить/выключить UI уведомления'), enableUINotifications) then
                 saveConfig()
                 local state = enableUINotifications[0] and "включены" or "выключены"
@@ -5269,7 +5306,6 @@ imgui.Begin('Script [TM] ' .. SCRIPT_VERSION, nil, imgui.WindowFlags.NoResize + 
             end
             imgui.Separator()
 
-            -- Оповещение о предметах
             if imgui.Checkbox(u8('Оповещение о предметах'), itemAdding) then 
                 saveConfig() 
                 local state = itemAdding[0] and "активировано" or "деактивировано"
@@ -5278,14 +5314,12 @@ imgui.Begin('Script [TM] ' .. SCRIPT_VERSION, nil, imgui.WindowFlags.NoResize + 
       
             if itemAdding[0] then
                 imgui.Indent(20)
-                -- Неизвестные предметы
                 if imgui.Checkbox(u8('Отправлять неизвестные предметы'), sendUnknownItems) then 
                     saveConfig() 
                     local state = sendUnknownItems[0] and "будут отправляться" or "скрыты"
                     show_arz_notify('info', 'Настройка', 'Неизвестные предметы ' .. state, 3000)
                 end
 
-                -- Короткие сообщения
                 if imgui.Checkbox(u8('Короткие сообщения (только название)'), shortMessage) then
                     saveConfig()
                     if shortMessage[0] then
@@ -5295,43 +5329,36 @@ imgui.Begin('Script [TM] ' .. SCRIPT_VERSION, nil, imgui.WindowFlags.NoResize + 
                     end
                 end
 
-                -- Слайдер задержки (1 до 30 секунд) - ВИДЕН ТОЛЬКО ПРИ ВКЛЮЧЕННЫХ КОРОТКИХ СООБЩЕНИЯХ
                 if shortMessage[0] then
                     imgui.Text(u8('Задержка отправки (сек)'))
                     if imgui.SliderFloat('##itemCollectionDelay', itemCollectionDelay, 0.0, 30.0, '%.1f') then
-                        -- При движении ползунка ничего не делаем
+                        -- Ничего не делаем при движении ползунка
                     end
-                    
-                    -- УВЕДОМЛЕНИЕ ПРИ ОТПУСКАНИИ ПОЛЗУНКА
                     if imgui.IsItemDeactivatedAfterEdit() then 
                         saveConfig()
                         show_arz_notify('info', 'Настройка', ('Задержка установлена: %.1f сек.'):format(itemCollectionDelay[0]), 3000)
                     end
                 end
-
                 imgui.Unindent(20)
             end
 
-            -- PayDay
             if imgui.Checkbox(u8('PayDay'), payday) then
                 saveConfig()
                 local state = payday[0] and "включены" or "выключены"
                 show_arz_notify('info', 'PayDay', 'Уведомления PayDay ' .. state, 3000)
             end
 
-            -- Хранилище
             if imgui.Checkbox(u8('Хранилище'), storage) then
                 saveConfig()
                 local state = storage[0] and "включены" or "выключены"
                 show_arz_notify('info', 'Хранилище', 'Уведомления о хранилище ' .. state, 3000)
             end
-		    if imgui.Checkbox(u8('квесты/задания'), quest) then
+      if imgui.Checkbox(u8('квесты/задания'), quest) then
                 saveConfig()
                 local state = quest[0] and "включены" or "выключены"
-                show_arz_notify('info', 'квесты/задания', 'Уведомления о хранилище ' .. state, 3000)
-            end
+                show_arz_notify('info', 'квесты/задания', 'Уведомления о квестах/заданиях ' .. state, 3000)
+				end
       
-            -- Выбор места спавна
             if imgui.Checkbox(u8('Выбор места спавна'), spawnSelect) then
                 saveConfig()
                 if spawnSelect[0] then
@@ -5340,182 +5367,139 @@ imgui.Begin('Script [TM] ' .. SCRIPT_VERSION, nil, imgui.WindowFlags.NoResize + 
                     show_arz_notify('info', 'Настройка', 'Уведомления о выборе спавна выключены.', 3000)
                 end
             end
-
         end
-
-      
         imgui.EndChild()
 
-        -- Кнопка "Закрыть" снизу по центру
         local b_width, b_height = 120, 30
         imgui.SetCursorPos(imgui.ImVec2((imgui.GetWindowWidth() - b_width) * 0.5, imgui.GetWindowHeight() - b_height - 10))
         if imgui.Button(u8('Закрыть'), imgui.ImVec2(b_width, b_height)) then
             window[0] = false
         end
-
         imgui.End()
-    end -- end if window[0]
+    end
 
     -- === ВСПЛЫВАЮЩЕЕ ОКНО "ИНФОРМАЦИЯ ОБ ОБНОВЛЕНИИ" ===
     if show_update_popup[0] then
     imgui.SetNextWindowPos(imgui.ImVec2(resX/2, resY/2), imgui.Cond.Appearing, imgui.ImVec2(0.5, 0.5))
     imgui.SetNextWindowSize(imgui.ImVec2(400, 280), imgui.Cond.Appearing)
-
-    -- ВТОРОЙ АРГУМЕНТ = nil (чтобы убрать крестик), НО НЕ NoTitleBar (чтобы заголовок остался)
-    imgui.Begin(u8('Информация об обновлении'), nil,
-        imgui.WindowFlags.NoResize + imgui.WindowFlags.NoCollapse)
-
-    imgui.Text(u8('Новая версия: ') .. remote_version_text)
-    imgui.Separator()
-    imgui.TextWrapped(u8(remote_update_info))
-    imgui.Dummy(imgui.ImVec2(0, 8))
-
-    local b_width, b_height = 120, 25
-    local padding_bottom = 10
-    local btn_pos_x = (imgui.GetWindowWidth() - b_width) * 0.5
-    local btn_pos_y = imgui.GetWindowHeight() - b_height - padding_bottom
-    imgui.SetCursorPos(imgui.ImVec2(btn_pos_x, btn_pos_y))
-
-    if imgui.Button(u8('Закрыть'), imgui.ImVec2(b_width, b_height)) then
-        show_update_popup[0] = false
-    end
-
+    imgui.Begin(u8('Информация об обновлении'), nil, imgui.WindowFlags.NoResize + imgui.WindowFlags.NoCollapse)
+        imgui.Text(u8('Новая версия: ') .. remote_version_text)
+        imgui.Separator()
+        imgui.TextWrapped(u8(remote_update_info))
+        imgui.Dummy(imgui.ImVec2(0, 8))
+        local b_width, b_height = 120, 25
+        local padding_bottom = 10
+        local btn_pos_x = (imgui.GetWindowWidth() - b_width) * 0.5
+        local btn_pos_y = imgui.GetWindowHeight() - b_height - padding_bottom
+        imgui.SetCursorPos(imgui.ImVec2(btn_pos_x, btn_pos_y))
+        if imgui.Button(u8('Закрыть'), imgui.ImVec2(b_width, b_height)) then
+            show_update_popup[0] = false
+        end
     imgui.End()
-end -- end if show_update_popup[0]
-
+end
 end)
 
 
 function samp.onServerMessage(color, text)
-    -- === Игнорируем сообщение о пункте выдачи хранилища ===
     if text:find("[Хранилище предметов] У Вас есть предметы в хранилище пункта выдачи.") then
-        return -- Прерываем выполнение функции, игнорируя это сообщение
+        return 
     end
 
-    -- === Оповещение о предметах (СБОРЩИК) ===
     if itemAdding[0] then
         local itemId = tonumber(text:match(":item(%d+):"))
-        if itemId and color == -65281 then -- Цвет для сообщений о получении предметов (обычно розовый)
-            local itemName = items_name[itemId]
-            if not itemName and not sendUnknownItems[0] then return end
+        if itemId and color == -65281 then 
+            local itemName = (items_name and items_name[itemId]) or ("ID: " .. itemId)
+            
+            if not sendUnknownItems[0] and (not items_name or not items_name[itemId]) then 
+                return 
+            end
 
-            local nameToDisplay = itemName or ("ID: " .. itemId)
             local message_to_send
 
             if shortMessage[0] then
-                -- Для коротких сообщений отправляем только название предмета
-                message_to_send = nameToDisplay
+                message_to_send = itemName
             else
-                -- Для полных сообщений, заменяем ":item<ID>:" на название
-                message_to_send = text:gsub(":item%d+:", nameToDisplay)
+                message_to_send = text:gsub(":item%d+:", itemName)
             end
 
             table.insert(collectedItemNames, message_to_send)
-            
-            -- === ЛОГИКА СБРОСА ТАЙМЕРА ===
-            lastItemReceiveTime = os.time() -- Сбрасываем время
-            itemCollectorActive = true      -- Активируем сборщик
-            -- ==============================
-            
-            return -- Прерываем, чтобы не попасть в логику PayDay/Storage, если это сообщение о предмете
+            lastItemReceiveTime = os.time() 
+            itemCollectorActive = true      
+            return 
         end
     end
     
-    -- === Выбор места спавна ===
     if spawnSelect[0] and text:find("Вы выбрали местом спавна") then
         sendTelegramMessage(text)
     end
-	
-        -- НОВОЕ: === Боевой Пропуск ===
--- === Боевой Пропуск (точная фильтрация и красивый вывод) ===
-if quest[0] then
-    -- Очищаем от цветовых кодов вида {RRGGBB}
-    local cleaned = text:gsub("{%x%x%x%x%x%x}", "")
-    -- Убираем начальные/конечные пробелы
-    cleaned = cleaned:gsub("^%s+", ""):gsub("%s+$", "")
+ 
+    if quest[0] then
+        local cleaned = text:gsub("{%x%x%x%x%x%x}", "")
+        cleaned = cleaned:gsub("^%s+", ""):gsub("%s+$", "")
 
-    -- Проверяем, что сообщение начинается именно с "[Боевой Пропуск]"
-    if cleaned:find("^%[Боевой Пропуск%]") then
-        -- Получаем часть сообщения после префикса "[Боевой Пропуск]"
-        local body = cleaned:match("^%[Боевой Пропуск%]%s*(.*)") or ""
+        if cleaned:find("^%[Боевой Пропуск%]") then
+            local body = cleaned:match("^%[Боевой Пропуск%]%s*(.*)") or ""
+            local event_type = nil    
+            local item_or_task_name = nil 
+            local final_message_part = "" 
 
-        local event_type = nil    -- Например: "забрал" или "выполнил задание"
-        local item_or_task_name = nil -- Название предмета или задания
-        local final_message_part = "" -- Часть сообщения после типа события
-
-        -- Шаблон 1: "Вы успешно забрали предмет - 'НАЗВАНИЕ'"
-        local item_pickup_match = body:match("^Вы%s+успешно%s+забрали%s+предмет%s*%-%s*'([^']+)'")
-        if item_pickup_match then
-            event_type = "забрал"
-            item_or_task_name = item_pickup_match
-            final_message_part = "Предмет " .. item_or_task_name
-        end
-
-        -- Шаблон 2: "Вы успешно забрали - 'НАЗВАНИЕ'" (для опыта или валюты)
-        if not item_or_task_name then -- Проверяем, если предыдущий шаблон не сработал
-            local xp_pickup_match = body:match("^Вы%s+успешно%s+забрали%s*%-%s*'([^']+)'")
-            if xp_pickup_match then
+            local item_pickup_match = body:match("^Вы%s+успешно%s+забрали%s+предмет%s*%-%s*'([^']+)'")
+            if item_pickup_match then
                 event_type = "забрал"
-                item_or_task_name = xp_pickup_match
+                item_or_task_name = item_pickup_match
                 final_message_part = "Предмет " .. item_or_task_name
             end
-        end
 
-        -- Шаблон 3: "Вы успешно выполнили задание - 'НАЗВАНИЕ'"
-        if not item_or_task_name then -- Проверяем, если предыдущие шаблоны не сработали
-            local task_complete_match = body:match("^Вы%s+успешно%s+выполнили%s+задание%s*%-%s*'([^']+)'")
-            if task_complete_match then
-                event_type = "выполнил задание"
-                item_or_task_name = task_complete_match
-                final_message_part = item_or_task_name -- Здесь не добавляем "Предмет"
+            if not item_or_task_name then 
+                local xp_pickup_match = body:match("^Вы%s+успешно%s+забрали%s*%-%s*'([^']+)'")
+                if xp_pickup_match then
+                    event_type = "забрал"
+                    item_or_task_name = xp_pickup_match
+                    final_message_part = "Предмет " .. item_or_task_name
+                end
+            end
+
+            if not item_or_task_name then 
+                local task_complete_match = body:match("^Вы%s+успешно%s+выполнили%s+задание%s*%-%s*'([^']+)'")
+                if task_complete_match then
+                    event_type = "выполнил задание"
+                    item_or_task_name = task_complete_match
+                    final_message_part = item_or_task_name 
+                end
+            end
+
+            if event_type and item_or_task_name then
+                local telegram_message = "[Боевой Пропуск]\n" .. event_type .. "\n" .. final_message_part
+                sendTelegramMessage(telegram_message)
             end
         end
-
-        -- Если мы нашли совпадение по одному из шаблонов, формируем и отправляем сообщение
-        if event_type and item_or_task_name then
-            local telegram_message = "[Боевой Пропуск]\n" .. event_type .. "\n" .. final_message_part
-            sendTelegramMessage(telegram_message)
-        end
-        -- Если ни один шаблон не совпал, это другое сообщение Боевого Пропуска, и мы его игнорируем.
     end
-end
-
-
-	
-	
-    -- === Хранилище предметов ===
+ 
     if storage[0] then
         if text:find("Добавлен новый предмет") or text:find("Вы забрали предмет") then
-            -- Сообщение о пункте выдачи уже игнорируется в начале функции
             sendTelegramMessage(text)
         end
     end
 
-    -- === PayDay ===
     if payday[0] then
-        -- Отлавливаем начало блока PayDay
         if color and text:find('Банковский чек') then
             getPayday = true
             listPayday = {}
             paydayTimeout = os.time() + PAYDAY_TIMEOUT_DURATION
             table.insert(listPayday, text)
         elseif getPayday then
-            -- Собираем строки PayDay
             table.insert(listPayday, text)
         end
 
-        -- Отлавливаем конец блока PayDay (обычно линия из подчеркиваний)
         if color and text:find('__________________________________________________________________________') then
             if getPayday then
                 sendTelegramMessage(table.concat(listPayday, '\n'))
             end
-			getPayday = false -- Сбрасываем флаг
-        -- Если тайм-аут истек, а блок PayDay не закончился, отправляем то, что успели собрать
+   getPayday = false 
         elseif getPayday and os.time() > paydayTimeout then
             sampAddChatMessage("{FF0000}[TM] Таймаут Payday, отправка неполных данных.", 0xFFFFFF)
             sendTelegramMessage(table.concat(listPayday, '\n'))
-            getPayday = false -- Сбрасываем флаг
+            getPayday = false 
         end
     end
-
 end
