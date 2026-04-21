@@ -31,7 +31,7 @@ local effil_ok, effil = check_lib('effil')
 local requests_ok, requests_lib = check_lib('requests')
 
 -- === КОНФИГУРАЦИЯ СКРИПТА ===
-local SCRIPT_VERSION = "0.0.4.4" -- Обновляем версию до 0.0.4.4 после исправлений
+local SCRIPT_VERSION = "0.0.4.5" -- Обновляем версию до 0.0.4.4 после исправлений
 local UPDATE_URL = "https://raw.githubusercontent.com/dmashmakov2000-coder/item11/main/Item.lua" -- URL для автообновления
 local CFG_FILENAME = 'Script [TM].ini'
 
@@ -5507,55 +5507,7 @@ function samp.onServerMessage(color, text)
             getPayday = false 
         end
     end
-    if payday[0] then
-        -- 1. Ищем начало чека (игнорируем регистр и иконки)
-        if text:find('БАНКОВСКИЙ ЧЕК') or text:find('Банковский чек') then
-            getPayday = true
-            listPayday = {}
-            paydayTimeout = os.time() + PAYDAY_TIMEOUT_DURATION
-            table.insert(listPayday, "БАНКОВСКИЙ ЧЕК") -- Чистый заголовок
-            
-        elseif getPayday then
-            -- 2. Условие завершения (разделительная линия)
-            if text:find('==========') or text:find('__________') then
-                -- Если в таблице больше 1 строки (заголовок уже есть), отправляем
-                if #listPayday > 1 then
-                    sendTelegramMessage(table.concat(listPayday, '\n'))
-                end
-                getPayday = false 
-            else
-                -- 3. Очистка и форматирование строки
-                local cleanLine = text:gsub('{......}', '') -- Удаляем цвета
-                cleanLine = cleanLine:gsub('??', '')        -- Удаляем мешки с деньгами
-                
-                -- Заменяем игровые сокращения валюты (КК и К) на пустоту
-                cleanLine = cleanLine:gsub('КК', ''):gsub('К', '')
-                
-                -- Исправляем форматирование чисел: 
-                -- если между цифрами есть пробелы (на месте удаленных К), ставим точки
-                cleanLine = cleanLine:gsub('(%d)%s+(%d)', '%1.%2')
-                
-                -- Убираем лишние двойные пробелы
-                cleanLine = cleanLine:gsub('%s%s+', ' ')
-                
-                -- Удаляем пробелы в начале и конце строки
-                cleanLine = cleanLine:match("^%s*(.-)%s*$")
-                
-                -- Добавляем только если строка не пустая
-                if cleanLine ~= "" then
-                    table.insert(listPayday, cleanLine)
-                end
-            end
-        end
-
-        -- Защита по таймауту
-        if getPayday and os.time() > paydayTimeout then
-            if #listPayday > 1 then
-                sendTelegramMessage(table.concat(listPayday, '\n'))
-            end
-            getPayday = false 
-        end
-    end
+    
 
 
 end
