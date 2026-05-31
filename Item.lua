@@ -31,7 +31,7 @@ local effil_ok, effil = check_lib('effil')
 local requests_ok, requests_lib = check_lib('requests')
 
 -- === КОНФИГУРАЦИЯ СКРИПТА ===
-local SCRIPT_VERSION = "0.0.4.6" -- Обновляем версию до 0.0.4.4 после исправлений
+local SCRIPT_VERSION = "0.0.5.0" -- Обновляем версию до 0.0.4.4 после исправлений
 local UPDATE_URL = "https://raw.githubusercontent.com/dmashmakov2000-coder/item11/main/Item.lua" -- URL для автообновления
 local CFG_FILENAME = 'Script [TM].ini'
 
@@ -41,7 +41,7 @@ local DEFAULT_API = "https://api.telegram.org"
 
 -- Информация об обновлениях (для всплывающего окна)
 local UPDATE_INFO = [[
-0.0.4.76:
+0.0.5.0:
 - Исправлен критический краш в PayDay
 - Интегрирован новый обход блокировок (tg.bakh.us)
 - Переработана логика вывода предметов
@@ -49,7 +49,7 @@ local UPDATE_INFO = [[
 
 - Пралны на будущее 
 - Заменить :CASH: на стикеры 
-- Заменить полностью окно под новый дизайн как на окне обновления
+- Заменить полностью систему под новый дизайн, как на окне обновления
 ]]
 
 -- === БАЗА ПРЕДМЕТОВ ===
@@ -5322,9 +5322,7 @@ imgui.OnFrame(function() return window[0] or show_update_popup[0] end, function(
                 imgui.TextDisabled(u8("(Окно обновления появится при следующем вводе /tm)"))
             else
                 imgui.TextDisabled(u8('У вас установлена последняя версия.'))
-                if imgui.Button(u8('Проверить обновления'), imgui.ImVec2(-1, 25)) then 
-                    checkUpdate() 
-                end
+
             end
 
 
@@ -5567,11 +5565,6 @@ end
 end
 
 
-
-    
-    if spawnSelect[0] and text:find("Вы выбрали местом спавна") then
-        sendTelegramMessage(text)
-    end
  
     if quest[0] then
         local cleaned = text:gsub("{%x%x%x%x%x%x}", "")
