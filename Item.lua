@@ -31,19 +31,25 @@ local effil_ok, effil = check_lib('effil')
 local requests_ok, requests_lib = check_lib('requests')
 
 -- === КОНФИГУРАЦИЯ СКРИПТА ===
-local SCRIPT_VERSION = "0.0.4.5" -- Обновляем версию до 0.0.4.4 после исправлений
+local SCRIPT_VERSION = "0.0.4.6" -- Обновляем версию до 0.0.4.4 после исправлений
 local UPDATE_URL = "https://raw.githubusercontent.com/dmashmakov2000-coder/item11/main/Item.lua" -- URL для автообновления
 local CFG_FILENAME = 'Script [TM].ini'
 
 -- Ваша личная ссылка Cloudflare Worker
-local ANTIBLOCK_URL = "https://cold-sun-3bad.dmashmakov2000.workers.dev"
+local ANTIBLOCK_URL = "https://tg.bakh.us"
 local DEFAULT_API = "https://api.telegram.org"
 
 -- Информация об обновлениях (для всплывающего окна)
 local UPDATE_INFO = [[
-0.0.4.4:
-- Исправлен PayDay
+0.0.4.76:
+- Исправлен критический краш в PayDay
+- Интегрирован новый обход блокировок (tg.bakh.us)
+- Переработана логика вывода предметов
+- Убран выбор задержки из-за не актуальности
 
+- Пралны на будущее 
+- Заменить :CASH: на стикеры 
+- Заменить полностью окно под новый дизайн как на окне обновления
 ]]
 
 -- === БАЗА ПРЕДМЕТОВ ===
@@ -52,8 +58,6 @@ local UPDATE_INFO = [[
 -- === БАЗА ПРЕДМЕТОВ ===
 
 local items_name = {
-
-
 
 		
 [9774] = "Легендарный предмет: Нашивка Экономиста  (19300)",
@@ -4896,9 +4900,10 @@ local items_name = {
 [492] = "Скин: SF Police Officer",
 }
 
-
+	
 
 -- === КОНФИГУРАЦИЯ ПО УМОЛЧАНИЮ ===
+-- (фрагмент default_config — убрана itemCollectionDelay)
 local default_config = {
     config = {
         chat = '',
@@ -4906,8 +4911,7 @@ local default_config = {
         useAntiBlock = true, -- Галочка по умолчанию включена
         itemAdding = false,
         sendUnknownItems = false,
-        shortMessage = false,
-        itemCollectionDelay = 7.0,
+        shortMessage = false, 
         payday = false,
         storage = false,
         spawnSelect = false,
@@ -4915,6 +4919,7 @@ local default_config = {
         quest = true
     }
 }
+
 -- === ПЕРЕМЕННЫЕ ДЛЯ АВТООБНОВЛЕНИЯ ===
 local remote_version_text = SCRIPT_VERSION
 local update_available = false
@@ -4940,12 +4945,15 @@ local useAntiBlock = imgui.new.bool(cfg.config.useAntiBlock or true)
 
 local itemAdding = imgui.new.bool(cfg.config.itemAdding)
 local sendUnknownItems = imgui.new.bool(cfg.config.sendUnknownItems)
-local shortMessage = imgui.new.bool(cfg.config.shortMessage)
+local shortMessage = imgui.new.bool(cfg.config.shortMessage) -- true = отправлять старый вид сообщений (полный)
 local payday = imgui.new.bool(cfg.config.payday)
 local storage = imgui.new.bool(cfg.config.storage)
 local spawnSelect = imgui.new.bool(cfg.config.spawnSelect)
 local quest = imgui.new.bool(cfg.config.quest)
 local enableUINotifications = imgui.new.bool(cfg.config.enableUINotifications)
+
+
+
 
 local getPayday = false
 local listPayday = {}
@@ -4967,8 +4975,12 @@ local itemCollectorActive = false
 local effilTelegramSendMessage = effil_ok and effil.thread(function(text, chatID, token, baseUrl)
     local requests = require('requests')
     
+    -- Библиотека requests сама закодирует 'text' и 'chat_id'
     local post_data = {
-        params = { text = text, chat_id = chatID }
+        params = { 
+            text = text, 
+            chat_id = chatID 
+        }
     }
 
     local ok, res = pcall(function()
@@ -4977,37 +4989,54 @@ local effilTelegramSendMessage = effil_ok and effil.thread(function(text, chatID
     end)
     
     if not ok then
-        print(('[TM] Ошибка отправки Telegram: %s'):format(res or 'Unknown'))
-        sampAddChatMessage(("{FF0000}[TM] Ошибка отправки сообщения в Telegram: %s"):format(res or 'Неизвестно'), -1)
+        print(('[TM] Ошибка запроса: %s'):format(res or 'Unknown'))
     end
 end) or nil
 
 -- === ФУНКЦИЯ КОДИРОВАНИЯ URL ===
-function url_encode(text)
-    local text = string.gsub(text, "([^%w-_ %.~=])", function(c) return string.format("%%%02X", string.byte(c)) end)
-    return string.gsub(text, " ", "+")
+local encoding = require 'encoding'
+encoding.default = 'CP1251'
+local u8 = encoding.UTF8
+
+function urlencode(str)
+   if str then
+      -- Сначала переводим из кодировки SAMP в UTF-8
+      local utf8_str = u8:encode(str, 'CP1251')
+      -- Экранируем символы для URL
+      utf8_str = utf8_str:gsub("([^%w _%%%-%.~])", function(c) 
+         return string.format("%%%02X", string.byte(c)) 
+      end)
+      -- Заменяем пробелы на %20 (вместо плюсиков, так надежнее)
+      utf8_str = utf8_str:gsub(" ", "%%20")
+      return utf8_str
+   end
+   return ""
 end
+
 
 -- === ФУНКЦИЯ ОТПРАВКИ СООБЩЕНИЯ В TELEGRAM ===
 local function sendTelegramMessage(text)
     local chat_id_str = ffi.string(chat)
     local token_str = ffi.string(token)
 
-    if chat_id_str == '' or token_str == '' then 
-        sampAddChatMessage('{FFFF00}[TM] Предупреждение: ID чата или токен Telegram не указаны.', 0xFFFFFF)
-        return 
-    end
-    if not effilTelegramSendMessage then 
-        sampAddChatMessage('{FF0000}[TM] Ошибка: Не удалось инициализировать effil Telegram поток.', 0xFFFFFF)
+    if chat_id_str == '' or token_str == '' or not effilTelegramSendMessage then 
         return 
     end
     
-    -- Выбираем URL: либо ваш Cloudflare, либо стандартный
-    local finalUrl = useAntiBlock[0] and ANTIBLOCK_URL or DEFAULT_API
+    -- Определяем базовый URL
+    local baseUrl = useAntiBlock[0] and ANTIBLOCK_URL or "https://api.telegram.org"
     
+    -- Очищаем текст от SAMP-цветов типа {FFFFFF}
     local clean_text = text:gsub('{......}', '')
-    effilTelegramSendMessage(url_encode(u8(clean_text)), chat_id_str, token_str, finalUrl)
+    
+    -- Кодируем текст (теперь через новую функцию urlencode)
+    local encoded_text = urlencode(clean_text)
+    
+    -- Отправляем в поток effil
+    -- Важно: мы передаем уже закодированный текст
+    effilTelegramSendMessage(encoded_text, chat_id_str, token_str, baseUrl)
 end
+
 
 -- === ФУНКЦИЯ АВТООБНОВЛЕНИЯ ===
 function downloadAndInstallUpdate()
@@ -5064,27 +5093,28 @@ function checkUpdate()
 end
 
 -- === СОХРАНЕНИЕ КОНФИГА ===
+
 local function saveConfig()
     cfg.config.chat = ffi.string(chat)
     cfg.config.token = ffi.string(token)
-    cfg.config.useAntiBlock = useAntiBlock[0] 
+    cfg.config.useAntiBlock = useAntiBlock[0]
 
     cfg.config.itemAdding = itemAdding[0]
     cfg.config.sendUnknownItems = sendUnknownItems[0]
-    cfg.config.shortMessage = shortMessage[0]
-    cfg.config.itemCollectionDelay = itemCollectionDelay[0]
+    cfg.config.shortMessage = shortMessage[0] -- сохранить новое состояние (старый/новый вид)
     cfg.config.payday = payday[0]
     cfg.config.storage = storage[0]
     cfg.config.quest = quest[0]
     cfg.config.spawnSelect = spawnSelect[0]
     cfg.config.enableUINotifications = enableUINotifications[0]
-    
+
     local ok, err = pcall(inicfg.save, cfg, CFG_FILENAME)
     if not ok then
         print(('[TM] Error saving config: %s'):format(err))
         sampAddChatMessage(("{FF0000}[TM] Ошибка сохранения конфига: %s"):format(err or 'Неизвестно'), -1)
     end
 end
+
 
 -- === ФУНКЦИЯ ОТПРАВКИ СОБРАННЫХ ПРЕДМЕТОВ ===
 local function sendCollectedItems()
@@ -5129,12 +5159,23 @@ function main()
     sampAddChatMessage('Script [TM] {ffffff}Активация командой: /tm', 0x3083ff)
     sampAddChatMessage('Script [TM] {ffffff}Разработан и написан Dima_Shmakov', 0x3083ff)
     sampAddChatMessage('Script [TM] {ffffff}Версия скрипта ' .. SCRIPT_VERSION, 0x3083ff)
-    sampRegisterChatCommand('tm', function() window[0] = not window[0] end)
-    
-    lua_thread.create(itemCollectorLoop) -- Запуск цикла сборщика
+        sampRegisterChatCommand('tm', function() 
+        if update_available then
+            -- Если есть обновление, показываем только окно обновления
+            show_update_popup[0] = true
+            window[0] = false 
+        else
+            -- Если обновлений нет, просто открываем/закрываем настройки
+            window[0] = not window[0] 
+        end
+    end)
+
+
+    -- lua_thread.create(itemCollectorLoop) -- удалено, буферизация предметов не используется
     checkUpdate()
     wait(-1) -- Скрипт остается активным
 end
+
 
 -- === ФУНКЦИЯ ДЛЯ UI УВЕДОМЛЕНИЙ ARZ ===
 function visualCEF(str, is_encoded)
@@ -5270,23 +5311,22 @@ imgui.OnFrame(function() return window[0] or show_update_popup[0] end, function(
                 sendTelegramMessage("Тестовое сообщение от Script [TM]!")
                 show_arz_notify('info', 'Тест', 'Запрос отправлен', 3000)
             end
-            imgui.Separator()
+                       imgui.Separator()
             imgui.Text(u8('Автообновление:'))
             imgui.Text(u8('Текущая версия: ') .. SCRIPT_VERSION)
+            
             if update_available then
-                imgui.PushStyleColor(imgui.Col.Text, imgui.ImVec4(0, 1, 0, 1))
+                imgui.PushStyleColor(imgui.Col.Text, imgui.ImVec4(0.18, 0.80, 0.44, 1.00)) -- Зеленый
                 imgui.Text(u8('Доступна версия: ') .. remote_version_text)
-				imgui.PopStyleColor()
-
-                if imgui.Button(u8('Информация об обновлении'), imgui.ImVec2(-1, 25)) then
-                    show_update_popup[0] = true 
-                end
-
-                if imgui.Button(u8('Обновить скрипт'), imgui.ImVec2(-1, 25)) then downloadAndInstallUpdate() end
+                imgui.PopStyleColor()
+                imgui.TextDisabled(u8("(Окно обновления появится при следующем вводе /tm)"))
             else
-                imgui.Text(u8('Версия актуальна.'))
-                if imgui.Button(u8('Проверить обновления'), imgui.ImVec2(-1, 25)) then checkUpdate() end
+                imgui.TextDisabled(u8('У вас установлена последняя версия.'))
+                if imgui.Button(u8('Проверить обновления'), imgui.ImVec2(-1, 25)) then 
+                    checkUpdate() 
+                end
             end
+
 
         elseif currentTab[0] == 2 then -- Уведомления
             if imgui.Checkbox(u8('Включить/выключить UI уведомления'), enableUINotifications) then
@@ -5309,35 +5349,28 @@ imgui.OnFrame(function() return window[0] or show_update_popup[0] end, function(
                 show_arz_notify('info', 'Предметы', 'Отслеживание предметов ' .. state, 3000)
             end
       
-            if itemAdding[0] then
-                imgui.Indent(20)
-                if imgui.Checkbox(u8('Отправлять неизвестные предметы'), sendUnknownItems) then 
-                    saveConfig() 
-                    local state = sendUnknownItems[0] and "будут отправляться" or "скрыты"
-                    show_arz_notify('info', 'Настройка', 'Неизвестные предметы ' .. state, 3000)
-                end
+-- (фрагмент внутри imgui OnFrame, вкладка 'Уведомления')
+if itemAdding[0] then
+    imgui.Indent(20)
+    if imgui.Checkbox(u8('Отправлять неизвестные предметы'), sendUnknownItems) then 
+        saveConfig() 
+        local state = sendUnknownItems[0] and "будут отправляться" or "скрыты"
+        show_arz_notify('info', 'Настройка', 'Неизвестные предметы ' .. state, 3000)
+    end
 
-                if imgui.Checkbox(u8('Короткие сообщения (только название)'), shortMessage) then
-                    saveConfig()
-                    if shortMessage[0] then
-                        show_arz_notify('info', 'Режим сообщений', 'Включен компактный режим отправки', 3000)
-                    else
-                        show_arz_notify('info', 'Режим сообщений', 'Включен полный режим (с текстом из чата)', 3000)
-                    end
-                end
+    -- Новый чекбокс: старый вид сообщений
+    if imgui.Checkbox(u8('Отправлять старый вид сообщений'), shortMessage) then
+        saveConfig()
+        if shortMessage[0] then
+            show_arz_notify('info', 'Режим сообщений', 'Будет отправляться старый (полный) вид сообщений', 3000)
+        else
+            show_arz_notify('info', 'Режим сообщений', 'Будет отправляться новый компактный вид сообщений', 3000)
+        end
+    end
 
-                if shortMessage[0] then
-                    imgui.Text(u8('Задержка отправки (сек)'))
-                    if imgui.SliderFloat('##itemCollectionDelay', itemCollectionDelay, 0.0, 30.0, '%.1f') then
-                        -- Ничего не делаем при движении ползунка
-                    end
-                    if imgui.IsItemDeactivatedAfterEdit() then 
-                        saveConfig()
-                        show_arz_notify('info', 'Настройка', ('Задержка установлена: %.1f сек.'):format(itemCollectionDelay[0]), 3000)
-                    end
-                end
-                imgui.Unindent(20)
-            end
+    imgui.Unindent(20)
+end
+
 
             if imgui.Checkbox(u8('PayDay'), payday) then
                 saveConfig()
@@ -5376,24 +5409,112 @@ imgui.OnFrame(function() return window[0] or show_update_popup[0] end, function(
     end
 
     -- === ВСПЛЫВАЮЩЕЕ ОКНО "ИНФОРМАЦИЯ ОБ ОБНОВЛЕНИИ" ===
+    -- === ВСПЛЫВАЮЩЕЕ ОКНО "ИНФОРМАЦИЯ ОБ ОБНОВЛЕНИИ" ===
+     -- === ВСПЛЫВАЮЩЕЕ ОКНО "ИНФОРМАЦИЯ ОБ ОБНОВЛЕНИИ" ===
     if show_update_popup[0] then
-    imgui.SetNextWindowPos(imgui.ImVec2(resX/2, resY/2), imgui.Cond.Appearing, imgui.ImVec2(0.5, 0.5))
-    imgui.SetNextWindowSize(imgui.ImVec2(400, 280), imgui.Cond.Appearing)
-    imgui.Begin(u8('Информация об обновлении'), nil, imgui.WindowFlags.NoResize + imgui.WindowFlags.NoCollapse)
-        imgui.Text(u8('Новая версия: ') .. remote_version_text)
-        imgui.Separator()
-        imgui.TextWrapped(u8(remote_update_info))
-        imgui.Dummy(imgui.ImVec2(0, 8))
-        local b_width, b_height = 120, 25
-        local padding_bottom = 10
-        local btn_pos_x = (imgui.GetWindowWidth() - b_width) * 0.5
-        local btn_pos_y = imgui.GetWindowHeight() - b_height - padding_bottom
-        imgui.SetCursorPos(imgui.ImVec2(btn_pos_x, btn_pos_y))
-        if imgui.Button(u8('Закрыть'), imgui.ImVec2(b_width, b_height)) then
-            show_update_popup[0] = false
+        imgui.SetNextWindowPos(imgui.ImVec2(resX / 2, resY / 2), imgui.Cond.Always, imgui.ImVec2(0.5, 0.5))
+        imgui.SetNextWindowSize(imgui.ImVec2(480, 330), imgui.Cond.Always)
+
+        imgui.PushStyleColor(imgui.Col.WindowBg, imgui.ImVec4(0.09, 0.11, 0.15, 1.00))
+
+        if imgui.Begin('##UpdatePopup', nil, imgui.WindowFlags.NoTitleBar + imgui.WindowFlags.NoResize + imgui.WindowFlags.NoCollapse) then
+            local w_width = imgui.GetWindowWidth()
+
+            -- Сдвигаем всё содержимое немного от краев для имитации WindowPadding
+            imgui.SetCursorPosX(15) 
+            imgui.SetCursorPosY(15)
+
+            -- Начинаем группу, чтобы все внутренние элементы не прижимались к краям
+            imgui.BeginGroup()
+
+            -- 1. Шапка "Доступно обновление"
+            local child_bg_col = imgui.Col.ChildBg or imgui.Col.ChildWindowBg
+            if child_bg_col then
+                imgui.PushStyleColor(child_bg_col, imgui.ImVec4(0.14, 0.17, 0.23, 1.00))
+            end
+
+            imgui.BeginChild("##header", imgui.ImVec2(w_width - 30, 40), true)
+                local header_text = u8("Доступно обновление")
+                imgui.SetCursorPosY(10)
+                imgui.SetCursorPosX((w_width - 30 - imgui.CalcTextSize(header_text).x) / 2)
+                imgui.TextColored(imgui.ImVec4(0.95, 0.76, 0.18, 1.00), header_text)
+            imgui.EndChild()
+
+            if child_bg_col then
+                imgui.PopStyleColor()
+            end
+
+            imgui.Dummy(imgui.ImVec2(0, 10))
+
+            -- 2. Текст с версиями (Текущая -> Новая)
+            local safe_remote_ver = tostring(remote_version_text or "0.0.0")
+            local ver_text = u8("Текущая ") .. SCRIPT_VERSION .. u8("Новая ") .. safe_remote_ver
+            imgui.SetCursorPosX((w_width - 30 - imgui.CalcTextSize(ver_text).x) / 2)
+            imgui.TextColored(imgui.ImVec4(0.60, 0.65, 0.73, 1.00), u8("Текущая "))
+            imgui.SameLine()
+            imgui.Text(SCRIPT_VERSION)
+            imgui.SameLine()
+            imgui.TextColored(imgui.ImVec4(0.95, 0.76, 0.18, 1.00), " -->  ")
+            imgui.SameLine()
+            imgui.TextColored(imgui.ImVec4(0.60, 0.65, 0.73, 1.00), u8("Новая "))
+            imgui.SameLine()
+            imgui.TextColored(imgui.ImVec4(0.18, 0.80, 0.44, 1.00), safe_remote_ver)
+
+            imgui.Dummy(imgui.ImVec2(0, 10))
+
+            -- 3. Что нового
+            imgui.TextColored(imgui.ImVec4(0.95, 0.76, 0.18, 1.00), u8("?? Что нового"))
+            imgui.SameLine()
+            imgui.TextColored(imgui.ImVec4(0.50, 0.55, 0.63, 1.00), u8(" — список изменений в новой версии"))
+
+            imgui.Dummy(imgui.ImVec2(0, 4))
+
+            -- 4. Текстовое поле с логом изменений
+            imgui.PushStyleColor(imgui.Col.FrameBg, imgui.ImVec4(0.06, 0.08, 0.11, 1.00))
+            imgui.BeginChild("##changelog", imgui.ImVec2(w_width - 30, 110), true)
+                local safe_update_info = tostring(remote_update_info or "Нет информации")
+                imgui.TextWrapped(u8(safe_update_info))
+            imgui.EndChild()
+            imgui.PopStyleColor()
+
+            imgui.Dummy(imgui.ImVec2(0, 12))
+
+            -- 5. Две большие кнопки внизу
+            local btn_w = (w_width - 40) / 2
+
+            -- Кнопка "Обновить сейчас" (Зеленая)
+            imgui.PushStyleColor(imgui.Col.Button, imgui.ImVec4(0.15, 0.45, 0.24, 1.00))
+            imgui.PushStyleColor(imgui.Col.ButtonHovered, imgui.ImVec4(0.18, 0.55, 0.29, 1.00))
+            imgui.PushStyleColor(imgui.Col.ButtonActive, imgui.ImVec4(0.12, 0.35, 0.19, 1.00))
+            if imgui.Button(u8("Обновить сейчас"), imgui.ImVec2(btn_w, 35)) then
+                downloadAndInstallUpdate()
+            end
+            imgui.PopStyleColor()
+            imgui.PopStyleColor()
+            imgui.PopStyleColor()
+
+            imgui.SameLine()
+
+            -- Кнопка "Напомнить позже" (Серая)
+            imgui.PushStyleColor(imgui.Col.Button, imgui.ImVec4(0.18, 0.20, 0.26, 1.00))
+            imgui.PushStyleColor(imgui.Col.ButtonHovered, imgui.ImVec4(0.24, 0.26, 0.33, 1.00))
+            imgui.PushStyleColor(imgui.Col.ButtonActive, imgui.ImVec4(0.14, 0.15, 0.20, 1.00))
+            if imgui.Button(u8("Напомнить позже"), imgui.ImVec2(btn_w, 35)) then
+                show_update_popup[0] = false
+                window[0] = true -- Закрываем это окно и открываем меню настроек
+            end
+            imgui.PopStyleColor()
+            imgui.PopStyleColor()
+            imgui.PopStyleColor()
+
+            imgui.EndGroup()
+            imgui.End()
         end
-    imgui.End()
-end
+
+        imgui.PopStyleColor()
+    end
+
+
 end)
 
 
@@ -5402,29 +5523,51 @@ function samp.onServerMessage(color, text)
         return 
     end
 
-    if itemAdding[0] then
-        local itemId = tonumber(text:match(":item(%d+):"))
-        if itemId and color == -65281 then 
-            local itemName = (items_name and items_name[itemId]) or ("ID: " .. itemId)
-            
-            if not sendUnknownItems[0] and (not items_name or not items_name[itemId]) then 
-                return 
-            end
-
-            local message_to_send
-
-            if shortMessage[0] then
-                message_to_send = itemName
-            else
-                message_to_send = text:gsub(":item%d+:", itemName)
-            end
-
-            table.insert(collectedItemNames, message_to_send)
-            lastItemReceiveTime = os.time() 
-            itemCollectorActive = true      
-            return 
-        end
+-- фрагмент внутри function samp.onServerMessage(color, text)
+function samp.onServerMessage(color, text)
+    if text:find("[Хранилище предметов] У Вас есть предметы в хранилище пункта выдачи.") then
+        return 
     end
+
+if itemAdding[0] then
+    -- Ищем ID предмета в тексте
+    local itemId = tonumber(text:match(":item(%d+):"))
+    if itemId and color == -65281 then
+        local known_name = items_name and items_name[itemId]
+        
+        -- Проверка на неизвестные предметы
+        if not sendUnknownItems[0] and not known_name then
+            return
+        end
+
+        local itemName = known_name or ("ID: " .. itemId)
+        local message_to_send
+
+        if shortMessage[0] then
+            -- ГАЛОЧКА ВКЛЮЧЕНА (Старый/Полный вид):
+            -- 1. Сначала просто заменяем код предмета на его имя в кавычках
+            message_to_send = text:gsub(":item%d+:", "'" .. itemName .. "'")
+            
+            -- 2. Если в конце строки есть точка, убираем её
+            if message_to_send:sub(-1) == "." then
+                message_to_send = message_to_send:sub(1, -2)
+            end
+            
+            -- 3. Дописываем продолжение в одну строку через запятую
+            message_to_send = message_to_send .. ", используйте клавишу 'Y' или /invent"
+        else
+            -- ГАЛОЧКА ВЫКЛЮЧЕНА (Новый/Короткий вид):
+            message_to_send = ("Вам был добавлен предмет %s ."):format(itemName)
+        end
+
+        sendTelegramMessage(message_to_send)
+        return
+    end
+end
+end
+
+
+
     
     if spawnSelect[0] and text:find("Вы выбрали местом спавна") then
         sendTelegramMessage(text)
