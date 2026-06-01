@@ -31,7 +31,7 @@ local effil_ok, effil = check_lib('effil')
 local requests_ok, requests_lib = check_lib('requests')
 
 -- === КОНФИГУРАЦИЯ СКРИПТА ===
-local SCRIPT_VERSION = "0.0.5.0" -- Обновляем версию до 0.0.4.4 после исправлений
+local SCRIPT_VERSION = "0.0.6.0" -- Обновляем версию до 0.0.4.4 после исправлений
 local UPDATE_URL = "https://raw.githubusercontent.com/dmashmakov2000-coder/item11/main/Item.lua" -- URL для автообновления
 local CFG_FILENAME = 'Script [TM].ini'
 
@@ -41,15 +41,13 @@ local DEFAULT_API = "https://api.telegram.org"
 
 -- Информация об обновлениях (для всплывающего окна)
 local UPDATE_INFO = [[
-0.0.5.0:
-- Исправлен критический краш в PayDay
-- Интегрирован новый обход блокировок (tg.bakh.us)
-- Переработана логика вывода предметов
-- Убран выбор задержки из-за не актуальности
+0.0.6.0:
+- Исправлен PayDay
+- Заменина полностью система под новый дизайн
 
-- Пралны на будущее 
+- Планы на будущее 
 - Заменить :CASH: на стикеры 
-- Заменить полностью систему под новый дизайн, как на окне обновления
+
 ]]
 
 -- === БАЗА ПРЕДМЕТОВ ===
@@ -4900,6 +4898,7 @@ local items_name = {
 [492] = "Скин: SF Police Officer",
 }
 
+
 	
 
 -- === КОНФИГУРАЦИЯ ПО УМОЛЧАНИЮ ===
@@ -5210,205 +5209,217 @@ end
 -- === IMGUI ИНТЕРФЕЙС ===
 imgui.OnInitialize(function()
     imgui.GetIO().IniFilename = nil
-    white_style()
+    modern_style() -- Вызываем новый стиль, который мы добавили.
 end)
+	
 
-function white_style()
+function modern_style()
     imgui.SwitchContext()
     local style = imgui.GetStyle()
+    local colors = style.Colors
 
-    style.WindowRounding        = 7.0
-    style.ChildRounding         = 7.0
-    style.FrameRounding         = 10.0
-    style.FramePadding          = imgui.ImVec2(5, 3)
-    style.WindowPadding         = imgui.ImVec2(8, 8)
-    style.ButtonTextAlign       = imgui.ImVec2(0.5, 0.5)
-    style.GrabMinSize           = 7
-    style.GrabRounding          = 15
+    style.WindowRounding = 12.0     -- Было 10
+    style.ChildRounding = 10.0      -- Было 8
+    style.FrameRounding = 8.0       -- Было 6
+    style.PopupRounding = 10.0
+    style.ScrollbarRounding = 12.0  -- Скроллбар тоже будет круглым, если появится
+    style.GrabRounding = 8.0
 
-    style.Colors[imgui.Col.WindowBg] = imgui.ImVec4(0.12, 0.12, 0.12, 0.94)
-    style.Colors[imgui.Col.TitleBg] = imgui.ImVec4(0.10, 0.10, 0.10, 1.00)
-    style.Colors[imgui.Col.TitleBgActive] = imgui.ImVec4(0.18, 0.18, 0.18, 1.00)
-    style.Colors[imgui.Col.TitleBgCollapsed] = imgui.ImVec4(0.10, 0.10, 0.10, 0.75)
-    style.Colors[imgui.Col.Text] = imgui.ImVec4(0.85, 0.85, 0.85, 1.00)
-    style.Colors[imgui.Col.TextDisabled] = imgui.ImVec4(0.50, 0.50, 0.50, 1.00)
-    style.Colors[imgui.Col.Border] = imgui.ImVec4(0.30, 0.30, 0.30, 0.50)
+    colors[imgui.Col.WindowBg]         = imgui.ImVec4(0.09, 0.11, 0.15, 1.00)
+    colors[imgui.Col.ChildBg]          = imgui.ImVec4(0.14, 0.17, 0.23, 1.00)
+    colors[imgui.Col.PopupBg]          = imgui.ImVec4(0.09, 0.11, 0.15, 1.00)
+    colors[imgui.Col.Border]           = imgui.ImVec4(0.14, 0.17, 0.23, 1.00)
+    colors[imgui.Col.FrameBg]          = imgui.ImVec4(0.06, 0.08, 0.11, 1.00)
+    colors[imgui.Col.FrameBgHovered]   = imgui.ImVec4(0.12, 0.14, 0.18, 1.00)
+    colors[imgui.Col.FrameBgActive]    = imgui.ImVec4(0.15, 0.18, 0.25, 1.00)
+    
+    colors[imgui.Col.Button]           = imgui.ImVec4(0.18, 0.20, 0.26, 1.00)
+    colors[imgui.Col.ButtonHovered]    = imgui.ImVec4(0.24, 0.26, 0.33, 1.00)
+    colors[imgui.Col.ButtonActive]     = imgui.ImVec4(0.14, 0.15, 0.20, 1.00)
 
-    style.Colors[imgui.Col.Button] = imgui.ImVec4(0.26, 0.26, 0.26, 0.40)
-    style.Colors[imgui.Col.ButtonHovered] = imgui.ImVec4(0.30, 0.30, 0.30, 1.00)
-    style.Colors[imgui.Col.ButtonActive] = imgui.ImVec4(0.40, 0.40, 0.40, 1.00)
-    style.Colors[imgui.Col.FrameBg] = imgui.ImVec4(0.20, 0.20, 0.20, 0.54)
-    style.Colors[imgui.Col.FrameBgHovered] = imgui.ImVec4(0.25, 0.25, 0.25, 0.78)
-    style.Colors[imgui.Col.FrameBgActive] = imgui.ImVec4(0.30, 0.30, 0.30, 1.00)
-
-    local accentColor = imgui.ImVec4(0.2, 0.6, 0.8, 1.0)
-    style.Colors[imgui.Col.Header] = accentColor
-    style.Colors[imgui.Col.HeaderHovered] = imgui.ImVec4(accentColor.x + 0.1, accentColor.y + 0.1, accentColor.z + 0.1, 1.0)
-    style.Colors[imgui.Col.HeaderActive] = imgui.ImVec4(accentColor.x + 0.2, accentColor.y + 0.2, accentColor.z + 0.2, 1.0)
-    style.Colors[imgui.Col.CheckMark] = accentColor
-    style.Colors[imgui.Col.SliderGrab] = accentColor
-    style.Colors[imgui.Col.SliderGrabActive] = imgui.ImVec4(accentColor.x + 0.2, accentColor.y + 0.2, accentColor.z + 0.2, 1.0)
-    style.Colors[imgui.Col.Separator] = imgui.ImVec4(0.40, 0.40, 0.40, 0.50)
-    style.Colors[imgui.Col.SeparatorHovered] = imgui.ImVec4(0.60, 0.60, 0.60, 0.78)
-    style.Colors[imgui.Col.SeparatorActive] = imgui.ImVec4(0.80, 0.80, 0.80, 1.00)
-
-    style.WindowRounding = 6.0
-    style.FrameRounding = 4.0
-    style.PopupRounding = 4.0
- style.GrabRounding = 4.0
-    style.TabRounding = 4.0
-
-    style.WindowPadding = imgui.ImVec2(10, 10)
-    style.FramePadding = imgui.ImVec2(6, 4)
-    style.ItemSpacing = imgui.ImVec2(8, 4)
-    style.ItemInnerSpacing = imgui.ImVec2(4, 4)
-    style.IndentSpacing = 20.0
-    style.ScrollbarSize = 10.0
-    style.ScrollbarRounding = 9.0
-
-    style.WindowTitleAlign = imgui.ImVec2(0.5, 0.5)
-    style.ButtonTextAlign = imgui.ImVec2(0.5, 0.5)
+    colors[imgui.Col.CheckMark]        = imgui.ImVec4(0.18, 0.80, 0.44, 1.00)
+    colors[imgui.Col.SliderGrab]       = imgui.ImVec4(0.18, 0.80, 0.44, 1.00)
+    colors[imgui.Col.Text]             = imgui.ImVec4(0.90, 0.90, 0.90, 1.00)
+    colors[imgui.Col.TextDisabled]     = imgui.ImVec4(0.50, 0.55, 0.63, 1.00)
 end
+
 
 imgui.OnFrame(function() return window[0] or show_update_popup[0] end, function(player)
     local resX, resY = getScreenResolution()
 
     -- === ГЛАВНОЕ ОКНО ===
     if window[0] then
-        local sizeX, sizeY = 320, 380
+        local sizeX, sizeY = 400, 480 
         imgui.SetNextWindowPos(imgui.ImVec2(resX / 2, resY / 2), imgui.Cond.FirstUseEver, imgui.ImVec2(0.5, 0.5))
         imgui.SetNextWindowSize(imgui.ImVec2(sizeX, sizeY), imgui.Cond.FirstUseEver)
 
-        imgui.Begin('Script [TM] ' .. SCRIPT_VERSION, nil, imgui.WindowFlags.NoResize + imgui.WindowFlags.NoCollapse)
+        imgui.Begin('##MainSettings', window, imgui.WindowFlags.NoTitleBar + imgui.WindowFlags.NoResize + imgui.WindowFlags.NoCollapse + imgui.WindowFlags.NoScrollbar)
 
-        -- Tabs
-        if imgui.Button(u8('Настройки')) then currentTab[0] = 1 end
-        imgui.SameLine()
-        if imgui.Button(u8('Уведомления')) then currentTab[0] = 2 end
-
-        imgui.Separator()
-
-        -- Область прокрутки для контента
-        imgui.BeginChild("##content_scroll", imgui.ImVec2(imgui.GetWindowWidth() - 20, imgui.GetWindowHeight() - 110), false)
-
-        if currentTab[0] == 1 then -- Настройки
-            imgui.Text(u8('Telegram Основное:'))
-            imgui.InputText(u8('ИД Чата'), chat, ffi.sizeof(chat), imgui.InputTextFlags.Password)
-            imgui.InputText(u8('Токен'), token, ffi.sizeof(token), imgui.InputTextFlags.Password)
-            
-            imgui.Separator()
-            imgui.Text(u8('Обход блокировки'))
-            if imgui.Checkbox(u8('Использовать обход блокировки'), useAntiBlock) then
-                saveConfig()
-            end
-                        
-            if imgui.Button(u8('Сохранить'), imgui.ImVec2(130, 25)) then
-                saveConfig()
-                show_arz_notify('success', 'Настройки', 'Данные сохранены!', 5000)
-            end
-            imgui.SameLine()
-            if imgui.Button(u8('Тест'), imgui.ImVec2(130, 25)) then
-                sendTelegramMessage("Тестовое сообщение от Script [TM]!")
-                show_arz_notify('info', 'Тест', 'Запрос отправлен', 3000)
-            end
-                       imgui.Separator()
-            imgui.Text(u8('Автообновление:'))
-            imgui.Text(u8('Текущая версия: ') .. SCRIPT_VERSION)
-            
-            if update_available then
-                imgui.PushStyleColor(imgui.Col.Text, imgui.ImVec4(0.18, 0.80, 0.44, 1.00)) -- Зеленый
-                imgui.Text(u8('Доступна версия: ') .. remote_version_text)
-                imgui.PopStyleColor()
-                imgui.TextDisabled(u8("(Окно обновления появится при следующем вводе /tm)"))
-            else
-                imgui.TextDisabled(u8('У вас установлена последняя версия.'))
-
-            end
-
-
-        elseif currentTab[0] == 2 then -- Уведомления
-            if imgui.Checkbox(u8('Включить/выключить UI уведомления'), enableUINotifications) then
-                saveConfig()
-                local state = enableUINotifications[0] and "включены" or "выключены"
-                show_arz_notify('info', 'Интерфейс', 'Визуальные уведомления ' .. state, 3000)
-            end
-            imgui.SameLine()
-            imgui.TextDisabled('(?)')
-            if imgui.IsItemHovered() then
-                imgui.BeginTooltip()
-                imgui.Text(u8('Включает или выключает всплывающие уведомления в правом нижнем углу экрана (уведомления ARZ).'))
-                imgui.EndTooltip()
-            end
-            imgui.Separator()
-
-            if imgui.Checkbox(u8('Оповещение о предметах'), itemAdding) then 
-                saveConfig() 
-                local state = itemAdding[0] and "активировано" or "деактивировано"
-                show_arz_notify('info', 'Предметы', 'Отслеживание предметов ' .. state, 3000)
-            end
-      
--- (фрагмент внутри imgui OnFrame, вкладка 'Уведомления')
-if itemAdding[0] then
-    imgui.Indent(20)
-    if imgui.Checkbox(u8('Отправлять неизвестные предметы'), sendUnknownItems) then 
-        saveConfig() 
-        local state = sendUnknownItems[0] and "будут отправляться" or "скрыты"
-        show_arz_notify('info', 'Настройка', 'Неизвестные предметы ' .. state, 3000)
-    end
-
-    -- Новый чекбокс: старый вид сообщений
-    if imgui.Checkbox(u8('Отправлять старый вид сообщений'), shortMessage) then
-        saveConfig()
-        if shortMessage[0] then
-            show_arz_notify('info', 'Режим сообщений', 'Будет отправляться старый (полный) вид сообщений', 3000)
-        else
-            show_arz_notify('info', 'Режим сообщений', 'Будет отправляться новый компактный вид сообщений', 3000)
-        end
-    end
-
-    imgui.Unindent(20)
-end
-
-
-            if imgui.Checkbox(u8('PayDay'), payday) then
-                saveConfig()
-                local state = payday[0] and "включены" or "выключены"
-                show_arz_notify('info', 'PayDay', 'Уведомления PayDay ' .. state, 3000)
-            end
-
-            if imgui.Checkbox(u8('Хранилище'), storage) then
-                saveConfig()
-                local state = storage[0] and "включены" or "выключены"
-                show_arz_notify('info', 'Хранилище', 'Уведомления о хранилище ' .. state, 3000)
-            end
-      if imgui.Checkbox(u8('квесты/задания'), quest) then
-                saveConfig()
-                local state = quest[0] and "включены" or "выключены"
-                show_arz_notify('info', 'квесты/задания', 'Уведомления о квестах/заданиях ' .. state, 3000)
-				end
-      
-            if imgui.Checkbox(u8('Выбор места спавна'), spawnSelect) then
-                saveConfig()
-                if spawnSelect[0] then
-                    show_arz_notify('info', 'Настройка', 'Уведомления о выборе спавна включены.', 3000)
-                else
-                    show_arz_notify('info', 'Настройка', 'Уведомления о выборе спавна выключены.', 3000)
-                end
-            end
-        end
+        
+        local w_width = imgui.GetWindowWidth()
+        
+        -- 1. Кастомная шапка
+        imgui.BeginChild("##header_main", imgui.ImVec2(w_width - 30, 40), true)
+            local header_text = "Script [TM] " .. u8("")
+            imgui.SetCursorPosY(10)
+            imgui.SetCursorPosX((w_width - 30 - imgui.CalcTextSize(header_text).x) / 2)
+            imgui.TextColored(imgui.ImVec4(0.95, 0.76, 0.18, 1.00), header_text)
         imgui.EndChild()
 
-        local b_width, b_height = 120, 30
-        imgui.SetCursorPos(imgui.ImVec2((imgui.GetWindowWidth() - b_width) * 0.5, imgui.GetWindowHeight() - b_height - 10))
-        if imgui.Button(u8('Закрыть'), imgui.ImVec2(b_width, b_height)) then
+
+
+
+        imgui.Dummy(imgui.ImVec2(0, 10))
+
+        -- 2. Переключатель Табов (БЕЗОПАСНЫЙ)
+        local tab_btn_w = (w_width - 35) / 2
+        
+        -- Фикс краша: сохраняем состояния во временные переменные
+        local is_tab1_active = (currentTab[0] == 1)
+        local is_tab2_active = (currentTab[0] == 2)
+        
+        -- Таб 1 (Настройки)
+        if is_tab1_active then 
+            imgui.PushStyleColor(imgui.Col.Button, imgui.ImVec4(0.18, 0.80, 0.44, 0.3)) 
+        end
+        if imgui.Button(u8('Настройки'), imgui.ImVec2(tab_btn_w, 30)) then 
+            currentTab[0] = 1 
+        end
+        if is_tab1_active then 
+            imgui.PopStyleColor() 
+        end
+        
+        imgui.SameLine(nil, 5)
+        
+        -- Таб 2 (Уведомления)
+        if is_tab2_active then 
+            imgui.PushStyleColor(imgui.Col.Button, imgui.ImVec4(0.18, 0.80, 0.44, 0.3)) 
+        end
+        if imgui.Button(u8('Уведомления'), imgui.ImVec2(tab_btn_w, 30)) then 
+            currentTab[0] = 2 
+        end
+        if is_tab2_active then 
+            imgui.PopStyleColor() 
+        end
+
+        imgui.Dummy(imgui.ImVec2(0, 10))
+
+        -- 3. Основной контент
+        imgui.BeginChild("##main_content", imgui.ImVec2(w_width - 30, sizeY - 160), true)
+            
+            if currentTab[0] == 1 then -- ВКЛАДКА НАСТРОЙКИ
+                imgui.TextColored(imgui.ImVec4(0.95, 0.76, 0.18, 1.00), u8("• Telegram Настройки"))
+                imgui.Dummy(imgui.ImVec2(0, 5))
+                
+                imgui.TextDisabled(u8("ID Чата:"))
+                imgui.SetNextItemWidth(-1)
+                imgui.InputText("##chatid", chat, ffi.sizeof(chat), imgui.InputTextFlags.Password)
+                
+                imgui.TextDisabled(u8("Токен бота:"))
+                imgui.SetNextItemWidth(-1)
+                imgui.InputText("##token", token, ffi.sizeof(token), imgui.InputTextFlags.Password)
+                
+                imgui.Dummy(imgui.ImVec2(0, 10))
+                imgui.Separator()
+                imgui.Dummy(imgui.ImVec2(0, 5))
+                
+                imgui.Checkbox(u8('Использовать обход блокировки'), useAntiBlock)
+                imgui.TextDisabled(u8("(Рекомендуется для жителей РФ)"))
+                
+                imgui.Dummy(imgui.ImVec2(0, 10))
+                
+                if imgui.Button(u8('Сохранить настройки'), imgui.ImVec2(-1, 30)) then
+                    saveConfig()
+                    show_arz_notify('success', 'TM', 'Сохранено', 3000)
+                end
+                if imgui.Button(u8('Проверить соединение (Тест)'), imgui.ImVec2(-1, 30)) then
+                    sendTelegramMessage("Проверка связи с Script [TM]")
+                end
+
+            elseif currentTab[0] == 2 then -- ВКЛАДКА УВЕДОМЛЕНИЯ
+                imgui.TextColored(imgui.ImVec4(0.95, 0.76, 0.18, 1.00), u8("• Управление уведомлениями"))
+                imgui.Dummy(imgui.ImVec2(0, 5))
+
+                if imgui.Checkbox(u8('Включить/выключить UI уведомления'), enableUINotifications) then
+                    saveConfig()
+                    local state = enableUINotifications[0] and "включены" or "выключены"
+                    show_arz_notify('info', 'Интерфейс', 'Визуальные уведомления ' .. state, 3000)
+                end
+                imgui.SameLine()
+                imgui.TextDisabled('(?)')
+                if imgui.IsItemHovered() then
+                    imgui.BeginTooltip()
+                    imgui.Text(u8('Включает или выключает всплывающие уведомления в правом нижнем углу экрана (уведомления ARZ).'))
+                    imgui.EndTooltip()
+                end
+                imgui.Separator()
+
+                if imgui.Checkbox(u8('Оповещение о предметах'), itemAdding) then 
+                    saveConfig() 
+                    local state = itemAdding[0] and "активировано" or "деактивировано"
+                    show_arz_notify('info', 'Предметы', 'Отслеживание предметов ' .. state, 3000)
+                end
+          
+                if itemAdding[0] then
+                    imgui.Indent(20)
+                    if imgui.Checkbox(u8('Отправлять неизвестные предметы'), sendUnknownItems) then 
+                        saveConfig() 
+                        local state = sendUnknownItems[0] and "будут отправляться" or "скрыты"
+                        show_arz_notify('info', 'Настройка', 'Неизвестные предметы ' .. state, 3000)
+                    end
+
+                    if imgui.Checkbox(u8('Отправлять старый вид сообщений'), shortMessage) then
+                        saveConfig()
+                        if shortMessage[0] then
+                            show_arz_notify('info', 'Режим сообщений', 'Будет отправляться старый (полный) вид сообщений', 3000)
+                        else
+                            show_arz_notify('info', 'Режим сообщений', 'Будет отправляться новый компактный вид сообщений', 3000)
+                        end
+                    end
+                    imgui.Unindent(20)
+                end
+
+                if imgui.Checkbox(u8('PayDay'), payday) then
+                    saveConfig()
+                    local state = payday[0] and "включены" or "выключены"
+                    show_arz_notify('info', 'PayDay', 'Уведомления PayDay ' .. state, 3000)
+                end
+
+                if imgui.Checkbox(u8('Хранилище'), storage) then
+                    saveConfig()
+                    local state = storage[0] and "включены" or "выключены"
+                    show_arz_notify('info', 'Хранилище', 'Уведомления о хранилище ' .. state, 3000)
+                end
+
+                if imgui.Checkbox(u8('квесты/задания'), quest) then
+                    saveConfig()
+                    local state = quest[0] and "включены" or "выключены"
+                    show_arz_notify('info', 'квесты/задания', 'Уведомления о квестах/заданиях ' .. state, 3000)
+                end
+          
+                if imgui.Checkbox(u8('Выбор места спавна'), spawnSelect) then
+                    saveConfig()
+                    if spawnSelect[0] then
+                        show_arz_notify('info', 'Настройка', 'Уведомления о выборе спавна включены.', 3000)
+                    else
+                        show_arz_notify('info', 'Настройка', 'Уведомления о выборе спавна выключены.', 3000)
+                    end
+                end
+end
+
+        imgui.EndChild()
+
+        -- 4. Футер
+        imgui.Dummy(imgui.ImVec2(0, 5))
+        imgui.SetCursorPosX(15)
+        if imgui.Button(u8("Закрыть меню"), imgui.ImVec2(w_width - 30, 35)) then
             window[0] = false
         end
+
         imgui.End()
     end
 
     -- === ВСПЛЫВАЮЩЕЕ ОКНО "ИНФОРМАЦИЯ ОБ ОБНОВЛЕНИИ" ===
-    -- === ВСПЛЫВАЮЩЕЕ ОКНО "ИНФОРМАЦИЯ ОБ ОБНОВЛЕНИИ" ===
-     -- === ВСПЛЫВАЮЩЕЕ ОКНО "ИНФОРМАЦИЯ ОБ ОБНОВЛЕНИИ" ===
     if show_update_popup[0] then
         imgui.SetNextWindowPos(imgui.ImVec2(resX / 2, resY / 2), imgui.Cond.Always, imgui.ImVec2(0.5, 0.5))
         imgui.SetNextWindowSize(imgui.ImVec2(480, 330), imgui.Cond.Always)
@@ -5418,33 +5429,23 @@ end
         if imgui.Begin('##UpdatePopup', nil, imgui.WindowFlags.NoTitleBar + imgui.WindowFlags.NoResize + imgui.WindowFlags.NoCollapse) then
             local w_width = imgui.GetWindowWidth()
 
-            -- Сдвигаем всё содержимое немного от краев для имитации WindowPadding
             imgui.SetCursorPosX(15) 
             imgui.SetCursorPosY(15)
-
-            -- Начинаем группу, чтобы все внутренние элементы не прижимались к краям
             imgui.BeginGroup()
 
-            -- 1. Шапка "Доступно обновление"
-            local child_bg_col = imgui.Col.ChildBg or imgui.Col.ChildWindowBg
-            if child_bg_col then
-                imgui.PushStyleColor(child_bg_col, imgui.ImVec4(0.14, 0.17, 0.23, 1.00))
-            end
-
+            -- Шапка "Доступно обновление"
+            imgui.PushStyleColor(imgui.Col.ChildBg, imgui.ImVec4(0.14, 0.17, 0.23, 1.00))
             imgui.BeginChild("##header", imgui.ImVec2(w_width - 30, 40), true)
                 local header_text = u8("Доступно обновление")
                 imgui.SetCursorPosY(10)
                 imgui.SetCursorPosX((w_width - 30 - imgui.CalcTextSize(header_text).x) / 2)
                 imgui.TextColored(imgui.ImVec4(0.95, 0.76, 0.18, 1.00), header_text)
             imgui.EndChild()
-
-            if child_bg_col then
-                imgui.PopStyleColor()
-            end
+            imgui.PopStyleColor()
 
             imgui.Dummy(imgui.ImVec2(0, 10))
 
-            -- 2. Текст с версиями (Текущая -> Новая)
+            -- Версии
             local safe_remote_ver = tostring(remote_version_text or "0.0.0")
             local ver_text = u8("Текущая ") .. SCRIPT_VERSION .. u8("Новая ") .. safe_remote_ver
             imgui.SetCursorPosX((w_width - 30 - imgui.CalcTextSize(ver_text).x) / 2)
@@ -5460,14 +5461,13 @@ end
 
             imgui.Dummy(imgui.ImVec2(0, 10))
 
-            -- 3. Что нового
-            imgui.TextColored(imgui.ImVec4(0.95, 0.76, 0.18, 1.00), u8("?? Что нового"))
+            -- Лог изменений
+            imgui.TextColored(imgui.ImVec4(0.95, 0.76, 0.18, 1.00), u8("• Что нового"))
             imgui.SameLine()
-            imgui.TextColored(imgui.ImVec4(0.50, 0.55, 0.63, 1.00), u8(" — список изменений в новой версии"))
+            imgui.TextColored(imgui.ImVec4(0.50, 0.55, 0.63, 1.00), u8(" — список изменений"))
 
             imgui.Dummy(imgui.ImVec2(0, 4))
 
-            -- 4. Текстовое поле с логом изменений
             imgui.PushStyleColor(imgui.Col.FrameBg, imgui.ImVec4(0.06, 0.08, 0.11, 1.00))
             imgui.BeginChild("##changelog", imgui.ImVec2(w_width - 30, 110), true)
                 local safe_update_info = tostring(remote_update_info or "Нет информации")
@@ -5477,95 +5477,83 @@ end
 
             imgui.Dummy(imgui.ImVec2(0, 12))
 
-            -- 5. Две большие кнопки внизу
+            -- Кнопки
             local btn_w = (w_width - 40) / 2
 
-            -- Кнопка "Обновить сейчас" (Зеленая)
+            -- Кнопка "Обновить"
             imgui.PushStyleColor(imgui.Col.Button, imgui.ImVec4(0.15, 0.45, 0.24, 1.00))
             imgui.PushStyleColor(imgui.Col.ButtonHovered, imgui.ImVec4(0.18, 0.55, 0.29, 1.00))
             imgui.PushStyleColor(imgui.Col.ButtonActive, imgui.ImVec4(0.12, 0.35, 0.19, 1.00))
             if imgui.Button(u8("Обновить сейчас"), imgui.ImVec2(btn_w, 35)) then
                 downloadAndInstallUpdate()
             end
-            imgui.PopStyleColor()
-            imgui.PopStyleColor()
-            imgui.PopStyleColor()
+            imgui.PopStyleColor(3)
 
             imgui.SameLine()
 
-            -- Кнопка "Напомнить позже" (Серая)
+            -- Кнопка "Напомнить позже"
             imgui.PushStyleColor(imgui.Col.Button, imgui.ImVec4(0.18, 0.20, 0.26, 1.00))
             imgui.PushStyleColor(imgui.Col.ButtonHovered, imgui.ImVec4(0.24, 0.26, 0.33, 1.00))
             imgui.PushStyleColor(imgui.Col.ButtonActive, imgui.ImVec4(0.14, 0.15, 0.20, 1.00))
             if imgui.Button(u8("Напомнить позже"), imgui.ImVec2(btn_w, 35)) then
                 show_update_popup[0] = false
-                window[0] = true -- Закрываем это окно и открываем меню настроек
+                window[0] = true 
             end
-            imgui.PopStyleColor()
-            imgui.PopStyleColor()
-            imgui.PopStyleColor()
+            imgui.PopStyleColor(3)
 
             imgui.EndGroup()
             imgui.End()
         end
-
         imgui.PopStyleColor()
     end
-
-
 end)
 
 
+
+
 function samp.onServerMessage(color, text)
+    if not text then return end
+    items_name = items_name or {}
+
+    -- 1. Игнорирование сообщений хранилища
     if text:find("[Хранилище предметов] У Вас есть предметы в хранилище пункта выдачи.") then
         return 
     end
 
--- фрагмент внутри function samp.onServerMessage(color, text)
-function samp.onServerMessage(color, text)
-    if text:find("[Хранилище предметов] У Вас есть предметы в хранилище пункта выдачи.") then
-        return 
-    end
+    -- 2. Логика добавления предметов
+    if itemAdding[0] then
+        local itemId = tonumber(text:match(":item(%d+):"))
+        if itemId and color == -65281 then
+            local known_name = items_name[itemId]
+            
+            if not sendUnknownItems[0] and not known_name then
+                return
+            end
 
-if itemAdding[0] then
-    -- Ищем ID предмета в тексте
-    local itemId = tonumber(text:match(":item(%d+):"))
-    if itemId and color == -65281 then
-        local known_name = items_name and items_name[itemId]
-        
-        -- Проверка на неизвестные предметы
-        if not sendUnknownItems[0] and not known_name then
+            local itemName = known_name or ("ID: " .. itemId)
+            local message_to_send
+
+            if shortMessage[0] then
+                message_to_send = text:gsub(":item%d+:", "'" .. itemName .. "'")
+                if message_to_send:sub(-1) == "." then
+                    message_to_send = message_to_send:sub(1, -2)
+                end
+                message_to_send = message_to_send .. ", используйте клавишу 'Y' или /invent"
+            else
+                message_to_send = ("Вам был добавлен предмет %s ."):format(itemName)
+            end
+
+            sendTelegramMessage(message_to_send)
             return
         end
-
-        local itemName = known_name or ("ID: " .. itemId)
-        local message_to_send
-
-        if shortMessage[0] then
-            -- ГАЛОЧКА ВКЛЮЧЕНА (Старый/Полный вид):
-            -- 1. Сначала просто заменяем код предмета на его имя в кавычках
-            message_to_send = text:gsub(":item%d+:", "'" .. itemName .. "'")
-            
-            -- 2. Если в конце строки есть точка, убираем её
-            if message_to_send:sub(-1) == "." then
-                message_to_send = message_to_send:sub(1, -2)
-            end
-            
-            -- 3. Дописываем продолжение в одну строку через запятую
-            message_to_send = message_to_send .. ", используйте клавишу 'Y' или /invent"
-        else
-            -- ГАЛОЧКА ВЫКЛЮЧЕНА (Новый/Короткий вид):
-            message_to_send = ("Вам был добавлен предмет %s ."):format(itemName)
-        end
-
-        sendTelegramMessage(message_to_send)
-        return
     end
-end
-end
 
-
+    -- 3. Выбор места спавна
+    if spawnSelect[0] and text:find("Вы выбрали местом спавна") then
+        sendTelegramMessage(text)
+    end
  
+    -- 4. Квесты и Боевой Пропуск
     if quest[0] then
         local cleaned = text:gsub("{%x%x%x%x%x%x}", "")
         cleaned = cleaned:gsub("^%s+", ""):gsub("%s+$", "")
@@ -5574,40 +5562,25 @@ end
             local body = cleaned:match("^%[Боевой Пропуск%]%s*(.*)") or ""
             local event_type = nil    
             local item_or_task_name = nil 
-            local final_message_part = "" 
 
-            local item_pickup_match = body:match("^Вы%s+успешно%s+забрали%s+предмет%s*%-%s*'([^']+)'")
-            if item_pickup_match then
-                event_type = "забрал"
-                item_or_task_name = item_pickup_match
-                final_message_part = "Предмет " .. item_or_task_name
-            end
-
-            if not item_or_task_name then 
-                local xp_pickup_match = body:match("^Вы%s+успешно%s+забрали%s*%-%s*'([^']+)'")
-                if xp_pickup_match then
-                    event_type = "забрал"
-                    item_or_task_name = xp_pickup_match
-                    final_message_part = "Предмет " .. item_or_task_name
-                end
-            end
-
-            if not item_or_task_name then 
-                local task_complete_match = body:match("^Вы%s+успешно%s+выполнили%s+задание%s*%-%s*'([^']+)'")
-                if task_complete_match then
-                    event_type = "выполнил задание"
-                    item_or_task_name = task_complete_match
-                    final_message_part = item_or_task_name 
-                end
+            local item_pickup = body:match("забрали предмет%s*-%s*'([^']+)'") or body:match("забрали%s*-%s*'([^']+)'")
+            local task_complete = body:match("выполнили задание%s*-%s*'([^']+)'")
+            
+            if item_pickup then
+                event_type = "Забрал предмет"
+                item_or_task_name = item_pickup
+            elseif task_complete then
+                event_type = "Выполнил задание"
+                item_or_task_name = task_complete
             end
 
             if event_type and item_or_task_name then
-                local telegram_message = "[Боевой Пропуск]\n" .. event_type .. "\n" .. final_message_part
-                sendTelegramMessage(telegram_message)
+                sendTelegramMessage("[Боевой Пропуск]\n" .. event_type .. ": " .. item_or_task_name)
             end
         end
     end
  
+    -- 5. PayDay (ПОЛНОСТЬЮ БЕЗОПАСНЫЙ И БЕЗ КРАШЕЙ)
     if payday[0] then
         -- 1. Ищем начало чека
         if text:find('БАНКОВСКИЙ ЧЕК') or text:find('Банковский чек') then
@@ -5643,7 +5616,4 @@ end
             getPayday = false 
         end
     end
-    
-
-
 end
