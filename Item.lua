@@ -1,7 +1,7 @@
 --[[
     Script [TM]
     Разработал: Dima_Shmakov
-    Версия: 0.0.8.6 (Mining Tools Font Merging Technology)
+    Версия: 0.0.8.0 (Mining Tools Font Merging Technology)
 ]]
 
 script_properties('work-in-pause')
@@ -40,7 +40,7 @@ local items_db_path = getWorkingDirectory() .. "\\config\\items.json"
 local ITEMS_DB_URL = "https://raw.githubusercontent.com/dmashmakov2000-coder/item11/main/items.json"
 
 -- === КОНФИГУРАЦИЯ СКРИПТА ===
-local SCRIPT_VERSION = "0.0.8.6" 
+local SCRIPT_VERSION = "0.0.8.0" 
 local UPDATE_URL = "https://raw.githubusercontent.com/dmashmakov2000-coder/item11/main/Item.lua"
 local CFG_FILENAME = 'Script [TM].ini'
 
@@ -49,10 +49,10 @@ local DEFAULT_API = "https://api.telegram.org"
 
 -- Информация об обновлениях (для всплывающего окна)
 local UPDATE_INFO = [[
-0.0.8.6:
-- Внедрено оригинальное слияние шрифтов из Mining Tools
-- Добавлен автоматический подбор иконок (FA5/FA6 Fallbacks)
-- Полностью исправлен баг с "?" на кнопках смайлов
+0.0.8.0:
+Были добавлены смайлики в самс скрипт на выбора
+item предметы теперь загружены в отдельынй фаил 
+добавлена кнопка теста для проверки как будет выглядить сообщение со смайликом 
 ]]
 
 -- === ПАКЕТ ИЗ 33 БЕЗОПАСНЫХ СМАЙЛИКОВ ===
