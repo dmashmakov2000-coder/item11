@@ -1,17 +1,15 @@
 --[[
     Script [TM]
     Разработал: Dima_Shmakov
-    Версия: 0.0.8.0 (Mining Tools Font Merging Technology)
+    Версия: 0.0.9.9 (Единая папка Script [TM])
+    Модификация: Все файлы (items.json, logo.png, stats) хранятся в папке Script [TM].
 ]]
 
 script_properties('work-in-pause')
 
 local ffi = require('ffi')
-
--- Безопасное подключение модуля fAwesome6 (Технология из Mining Tools)
 local fa_ok, fa = pcall(require, 'fAwesome6')
 
--- Проверка и загрузка критически важных библиотек
 local load_errors = {}
 local function check_lib(name)
     local ok, lib = pcall(require, name)
@@ -31,29 +29,43 @@ local encoding = require('encoding')
 encoding.default = 'CP1251'
 local u8 = encoding.UTF8
 
--- Проверка effil и requests
 local effil_ok, effil = check_lib('effil')
 local requests_ok, requests_lib = check_lib('requests')
 
--- === НАСТРОЙКИ ПУТЕЙ И URL ===
-local items_db_path = getWorkingDirectory() .. "\\config\\items.json"
-local ITEMS_DB_URL = "https://raw.githubusercontent.com/dmashmakov2000-coder/item11/main/items.json"
+-- === ЕДИНАЯ ПАПКА Script [TM] ===
+local base_dir = getWorkingDirectory()
+local script_folder = base_dir .. "\\Script [TM]"
 
--- === КОНФИГУРАЦИЯ СКРИПТА ===
-local SCRIPT_VERSION = "0.0.8.0" 
+-- Создаём папку Script [TM], если нет
+if not doesDirectoryExist(script_folder) then
+    createDirectory(script_folder)
+    print("[TM] Папка 'Script [TM]' создана по пути: " .. script_folder)
+end
+
+-- Все файлы теперь в Script [TM]
+local items_db_path = script_folder .. "\\items.json"
+local logo_path = script_folder .. "\\logo.png"
+local stats_file_path = script_folder .. "\\ScriptTM_stats.json"
+
+-- URL для скачивания
+local ITEMS_DB_URL = "https://raw.githubusercontent.com/dmashmakov2000-coder/item11/main/items.json"
+local LOGO_URL = "https://raw.githubusercontent.com/dmashmakov2000-coder/item11/main/logo.png"
+
+-- === КОНФИГУРАЦИЯ СТАТИСТИКИ И ПРОЧЕЕ ===
+local SCRIPT_VERSION = "0.0.9.0"
 local UPDATE_URL = "https://raw.githubusercontent.com/dmashmakov2000-coder/item11/main/Item.lua"
 local CFG_FILENAME = 'Script [TM].ini'
 
 local ANTIBLOCK_URL = "https://tg.bakh.us"
 local DEFAULT_API = "https://api.telegram.org"
 
--- Информация об обновлениях (для всплывающего окна)
 local UPDATE_INFO = [[
-0.0.8.0:
-Были добавлены смайлики в самс скрипт на выбора
-item предметы теперь загружены в отдельынй фаил 
-добавлена кнопка теста для проверки как будет выглядить сообщение со смайликом 
+0.0.9.0:
+
 ]]
+
+
+
 
 -- === ПАКЕТ ИЗ 33 БЕЗОПАСНЫХ СМАЙЛИКОВ ===
 local emojis_list = {
@@ -71,7 +83,7 @@ local emojis_list = {
     { key = "emoji_box", char = "\xf0\x9f\x93\xa6", name = "Ящик", ui_name = "[ Ящик ]", desc = "Коробка / Посылка" },
     { key = "emoji_backpack", char = "\xf0\x9f\x8e\x92", name = "Рюкзак", ui_name = "[ Рюкзак ]", desc = "Рюкзак / Сумка для покупок" },
     { key = "emoji_gift", char = "\xf0\x9f\x8e\x81", name = "Подарок", ui_name = "[ Подарок ]", desc = "Подарочная коробка с лентой" },
-    { key = "emoji_mine", char = "\xe2\x9b\xcf\xef\xb8\x8f", name = "Кирка", ui_name = "[ Кирка ]", desc = "Кирка / Молоток" },
+    { key = "emoji_mine", char = "\xf0\x9f\xaa\xa3", name = "Кирка", ui_name = "[ Кирка ]", desc = "Кирка / Молоток" },
     { key = "emoji_fish", char = "\xf0\x9f\x90\x9f", name = "Рыба", ui_name = "[ Рыба ]", desc = "Тропическая рыбка" },
     { key = "emoji_gun", char = "\xf0\x9f\x94\xab", name = "Оружие", ui_name = "[ Оружие ]", desc = "Оружие / Пистолет" },
     { key = "emoji_cart", char = "\xf0\x9f\x9b\x92", name = "Тележка", ui_name = "[ Лавка ]", desc = "Торговая лавка" },
@@ -79,7 +91,7 @@ local emojis_list = {
     { key = "emoji_check", char = "\xe2\x9c\x85", name = "ОК", ui_name = "[ Галочка ]", desc = "Зеленая галочка" },
     { key = "emoji_cross", char = "\xe2\x9d\x8c", name = "Отмена", ui_name = "[ Крестик ]", desc = "Красный крестик отмены" },
     { key = "emoji_warn", char = "\xe2\x9a\xa0\xef\xb8\x8f", name = "Варн", ui_name = "[ Внимание ]", desc = "Знак предупреждения" },
-    { key = "emoji_bell", char = "\xf0\x9f\x94\x94", name = "Звонок", ui_name = "[ Звонок ]", desc = "Золотой колокольчик" },
+    { key = "emoji_bell", char = "\xf0\x9f\x94\x94", name = "Звонок", ui_name = "[ Звонок ]", desc = "Золоток колокольчик" },
     { key = "emoji_siren", char = "\xf0\x9f\x9a\xa8", name = "Сирена", ui_name = "[ Сирена ]", desc = "Громкоговоритель" },
     { key = "emoji_shield", char = "\xf0\x9f\x9b\xa1\xef\xb8\x8f", name = "Щит", ui_name = "[ Щит ]", desc = "Защитный щит" },
     { key = "emoji_lock", char = "\xf0\x9f\x94\x92", name = "Замок", ui_name = "[ Замок ]", desc = "Закрытый навесной замок" },
@@ -131,12 +143,42 @@ local emoji_fa_mappings = {
     emoji_rocket   = {"ROCKET"},
 }
 
--- === ДАННЫЕ ===
+-- === ДАННЫЕ СЕССИОННОГО АНАЛИТИКА ===
+local session_stats = {
+    last_active_date = "",
+    time_in_game = 0,
+    quests_completed = 0,
+    wages_accumulated = 0,
+    dep_growth = 0,
+    az_accumulated = 0,
+    report_sent = false,
+    
+    -- Для окна проекции заработка
+    last_payday_wage = 0,
+    last_payday_dep = 0,
+    last_payday_az = 0
+}
+
 local items_name = {}
 local items_loaded = false
 local font_loaded = false
 
--- === УМНЫЙ И БЕЗОПАСНЫЙ РЕНДЕР ИКОНОК ===
+-- === ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ОЧИСТКИ И ИКОНОК ===
+local function formatNumber(amount)
+    if not amount then return "0" end
+    local formatted = tostring(math.floor(tonumber(amount) or 0))
+    local k
+    while true do
+        formatted, k = string.gsub(formatted, "^(-?%d+)(%d%d%d)", '%1.%2')
+        if (k == 0) then break end
+    end
+    return formatted
+end
+function cleanColors(text)
+    if type(text) ~= "string" then return text end
+    return text:gsub("{%x%x%x%x%x%x}", "")
+end
+
 local function getEmojiRenderString(key)
     if font_loaded and fa_ok and fa then
         local alternatives = emoji_fa_mappings[key]
@@ -147,13 +189,20 @@ local function getEmojiRenderString(key)
             end
         end
     end
-    -- Если шрифт не загружен или иконка не найдена в fAwesome6 — показываем красивый текст в скобках
     for _, e in ipairs(emojis_list) do
         if e.key == key then
             return u8(e.ui_name)
         end
     end
     return u8("[ ? ]")
+end
+
+-- Безопасное получение векторной иконки FontAwesome
+local function getIcon(name, fallback)
+    if font_loaded and fa_ok and fa and fa[name] then
+        return fa[name] .. " "
+    end
+    return fallback or ""
 end
 
 -- Функция безопасного перевода UTF-8 в нативную CP1251
@@ -166,7 +215,22 @@ local function to_cp1251(str)
     return str
 end
 
--- === УНИВЕРСАЛЬНЫЙ ЗАГРУЗЧИК БАЗЫ ДАННЫХ (LUA И JSON) ===
+-- Вспомогательная функция очистки строки в чистое число
+local function parse_numeric_value(str)
+    if not str then return 0 end
+    local clean = str:gsub("{%x%x%x%x%x%x}", ""):gsub("[^%d%-]", "")
+    return tonumber(clean) or 0
+end
+
+-- Форматирование времени игры в ЧЧ:ММ:СС
+local function format_game_time(seconds)
+    local h = math.floor(seconds / 3600)
+    local m = math.floor((seconds % 3600) / 60)
+    local s = seconds % 60
+    return string.format("%02d:%02d:%02d", h, m, s)
+end
+
+-- === УНИВЕРСАЛЬНЫЙ ЗАГРУЗЧИК БАЗЫ ДАННЫХ ===
 function loadItemsDatabase()
     if doesFileExist(items_db_path) then
         local f = io.open(items_db_path, "r")
@@ -207,7 +271,6 @@ function loadItemsDatabase()
         downloadItemsDatabase()
     end
 end
-
 function downloadItemsDatabase()
     if not requests_ok then return end
     lua_thread.create(function()
@@ -218,15 +281,158 @@ function downloadItemsDatabase()
                 f:write(res.text)
                 f:close()
                 loadItemsDatabase() 
+                print("[TM] База предметов успешно обновлена.")
             end
         end
     end)
 end
 
+-- === СКАЧИВАНИЕ ЛОГОТИПА ===
+function downloadLogo()
+    if not requests_ok then
+        sampAddChatMessage("{ff0000}[TM] Ошибка: библиотека 'requests' не найдена. Невозможно скачать логотип.", -1)
+        return
+    end
+    lua_thread.create(function()
+        local ok, res = pcall(requests_lib.get, LOGO_URL)
+        if ok and res.status_code == 200 then
+            local f = io.open(logo_path, "wb")
+            if f then
+                f:write(res.body or res.text)
+                f:close()
+                print("[TM] Логотип успешно скачан в: " .. logo_path)
+                -- Перезагружаем текстуру
+                local ok_tex, tex = pcall(imgui.CreateTextureFromFile, logo_path)
+                if ok_tex and tex then
+                    logo_texture = tex
+                    sampAddChatMessage("{00FF00}[TM] Логотип обновлён и загружен!", -1)
+                else
+                    sampAddChatMessage("{ffff00}[TM] Логотип скачан, но не удалось загрузить текстуру.", -1)
+                end
+            else
+                sampAddChatMessage("{ff0000}[TM] Ошибка: не удалось создать файл логотипа.", -1)
+            end
+        else
+            sampAddChatMessage("{ff0000}[TM] Ошибка при скачивании логотипа (статус: " .. tostring(res and res.status_code) .. ").", -1)
+        end
+    end)
+end
+
+
 -- Получение названия предмета из базы данных
 function getItemName(id)
     if not items_loaded then return "ID: " .. id end
     return items_name[tostring(id)] or items_name[tonumber(id)] or ("ID: " .. id)
+end
+
+-- === СОХРАНЕНИЕ СТАТИСТИКИ В ФАЙЛ ===
+local function save_stats_to_file()
+    local data = {
+        last_active_date = session_stats.last_active_date,
+        time_in_game = session_stats.time_in_game,
+        quests_completed = session_stats.quests_completed,
+        wages_accumulated = session_stats.wages_accumulated,
+        dep_growth = session_stats.dep_growth,
+        az_accumulated = session_stats.az_accumulated,
+        report_sent = session_stats.report_sent,
+        
+        last_payday_wage = session_stats.last_payday_wage,
+        last_payday_dep = session_stats.last_payday_dep,
+        last_payday_az = session_stats.last_payday_az
+    }
+    local f = io.open(stats_file_path, "w")
+    if f then
+        f:write(json.encode(data))
+        f:close()
+    end
+end
+
+-- === ГЕНЕРАТОР ТЕКСТОВОГО ЕЖЕДНЕВНОГО ОТЧЁТА В ТЕЛЕГРАМ ===
+local function get_session_report_text(date_str)
+    local lines = {}
+    table.insert(lines, "{emoji_bag} *ЕЖЕДНЕВНЫЙ ОТЧЁТ ЗА " .. tostring(date_str) .. "*")
+    table.insert(lines, "====================================")
+    table.insert(lines, "? *Время в игре:* " .. format_game_time(session_stats.time_in_game))
+    table.insert(lines, "{emoji_trophy} *Выполнено квестов:* " .. tostring(session_stats.quests_completed))
+    table.insert(lines, "")
+    table.insert(lines, "{emoji_money} *ФИНАНСЫ ЗА ДЕНЬ:*")
+    table.insert(lines, "  > {emoji_dollar} *Зарплата (общая):* $" .. tostring(session_stats.wages_accumulated))
+    table.insert(lines, "  > {emoji_card} *Прирост по депозиту:* $" .. tostring(session_stats.dep_growth))
+    table.insert(lines, "  > {emoji_coin} *Заработано AZ-Coins:* " .. tostring(session_stats.az_accumulated) .. " AZ")
+    table.insert(lines, "====================================")
+    
+    return table.concat(lines, "\n")
+end
+
+-- === ЗАГРУЗКА СТАТИСТИКИ И ОФФЛАЙН ДОГОН ===
+local function load_stats_from_file()
+    local current_date = os.date("%d.%m.%Y")
+    if doesFileExist(stats_file_path) then
+        local f = io.open(stats_file_path, "r")
+        if f then
+            local content = f:read("*a")
+            f:close()
+            local ok, decoded = pcall(json.decode, content)
+            if ok and decoded then
+                if decoded.last_active_date == current_date then
+                    -- Загружаем сегодняшнюю сессию
+                    session_stats.last_active_date = decoded.last_active_date or current_date
+                    session_stats.time_in_game = decoded.time_in_game or 0
+                    session_stats.quests_completed = decoded.quests_completed or 0
+                    session_stats.wages_accumulated = decoded.wages_accumulated or 0
+                    session_stats.dep_growth = decoded.dep_growth or 0
+                    session_stats.az_accumulated = decoded.az_accumulated or 0
+                    session_stats.report_sent = decoded.report_sent or false
+                    
+                    session_stats.last_payday_wage = decoded.last_payday_wage or 0
+                    session_stats.last_payday_dep = decoded.last_payday_dep or 0
+                    session_stats.last_payday_az = decoded.last_payday_az or 0
+                else
+                    -- ДАТА ИЗМЕНИЛАСЬ: Автодогон по дате
+                    if decoded.report_sent == false and (decoded.wages_accumulated > 0 or decoded.quests_completed > 0 or decoded.dep_growth > 0 or decoded.az_accumulated > 0 or (decoded.time_in_game or 0) > 60) then
+                        -- Временно восстанавливаем вчерашние статы для генерации отчета
+                        session_stats.time_in_game = decoded.time_in_game or 0
+                        session_stats.quests_completed = decoded.quests_completed or 0
+                        session_stats.wages_accumulated = decoded.wages_accumulated or 0
+                        session_stats.dep_growth = decoded.dep_growth or 0
+                        session_stats.az_accumulated = decoded.az_accumulated or 0
+                        
+                        local old_date = decoded.last_active_date or "Прошлый день"
+                        local report_text = get_session_report_text(old_date)
+                        sendTelegramMessage(report_text)
+                    end
+
+                    -- Очищаем для сегодняшнего дня
+                    session_stats.last_active_date = current_date
+                    session_stats.time_in_game = 0
+                    session_stats.quests_completed = 0
+                    session_stats.wages_accumulated = 0
+                    session_stats.dep_growth = 0
+                    session_stats.az_accumulated = 0
+                    session_stats.report_sent = false
+                    
+                    session_stats.last_payday_wage = decoded.last_payday_wage or 0
+                    session_stats.last_payday_dep = decoded.last_payday_dep or 0
+                    session_stats.last_payday_az = decoded.last_payday_az or 0
+                    save_stats_to_file()
+                end
+                return
+            end
+        end
+    end
+    -- Инициализируем с нуля
+    session_stats.last_active_date = current_date
+    session_stats.time_in_game = 0
+    session_stats.quests_completed = 0
+    session_stats.wages_accumulated = 0
+    session_stats.dep_growth = 0
+    session_stats.az_accumulated = 0
+    session_stats.report_sent = false
+    
+    session_stats.last_payday_wage = 0
+    session_stats.last_payday_dep = 0
+    session_stats.last_payday_az = 0
+    save_stats_to_file()
 end
 
 -- === КОНФИГУРАЦИЯ ПО УМОЛЧАНИЮ ===
@@ -300,10 +506,9 @@ local enableUINotifications = imgui.new.bool(cfg.config.enableUINotifications)
 local getPayday = false
 local listPayday = {}
 local paydayTimeout = 0
-local PAYDAY_TIMEOUT_DURATION = 10
 
 local window = imgui.new.bool(false)
-local currentTab = imgui.new.int(1) -- 1: Настройки, 2: Уведомления, 3: Стилизация
+local currentTab = imgui.new.int(1) -- 1: Настройки, 2: Уведомления, 3: Стилизация, 4: Статистика
 
 -- Переменные для полноэкранного модального окна выбора смайликов
 local show_emoji_selector_modal = imgui.new.bool(false)
@@ -456,6 +661,7 @@ function main()
     for _, err in ipairs(load_errors) do sampAddChatMessage("{ff0000}[TM] " .. err, -1) end
     
     loadItemsDatabase()
+    load_stats_from_file() -- Загрузка вечной сессии из JSON
 
     sampAddChatMessage('Script [TM] {ffffff}Активация командой: /tm', 0x3083ff)
     sampAddChatMessage('Script [TM] {ffffff}Разработан и написан Dima_Shmakov', 0x3083ff)
@@ -469,6 +675,44 @@ function main()
         end
     end)
     checkUpdate()
+
+    -- === ФОНОВЫЙ ПОТОК: СЕКУНДОМЕР И АВТО-ОТПРАВКА В 00:00 ===
+    lua_thread.create(function()
+        local last_tick = os.time()
+        while true do
+            wait(1000)
+            local current_tick = os.time()
+            local diff = current_tick - last_tick
+            last_tick = current_tick
+            if diff > 0 then
+                session_stats.time_in_game = (session_stats.time_in_game or 0) + diff
+                save_stats_to_file()
+            end
+            
+            -- Проверка наступления 00:00 (Нового дня)
+            local current_date = os.date("%d.%m.%Y")
+            if session_stats.last_active_date ~= "" and session_stats.last_active_date ~= current_date then
+                -- Отменяем отчёт за вчерашний день, если не отправлен
+                if session_stats.report_sent == false then
+                    local report_text = get_session_report_text(session_stats.last_active_date)
+                    sendTelegramMessage(report_text)
+                    session_stats.report_sent = true
+                    save_stats_to_file()
+                end
+
+                -- Очищаем данные для нового дня
+                session_stats.last_active_date = current_date
+                session_stats.quests_completed = 0
+                session_stats.wages_accumulated = 0
+                session_stats.dep_growth = 0
+                session_stats.az_accumulated = 0
+                session_stats.time_in_game = 0
+                session_stats.report_sent = false
+                save_stats_to_file()
+            end
+        end
+    end)
+
     wait(-1)
 end
 
@@ -506,6 +750,37 @@ end
 imgui.OnInitialize(function()
     imgui.GetIO().IniFilename = nil
     modern_style() 
+if doesFileExist(logo_path) then
+        local ok, tex = pcall(imgui.CreateTextureFromFile, logo_path)
+        if ok and tex then
+            logo_texture = tex
+            print("[TM] Текстура логотипа успешно загружена!")
+        else
+            print("[TM] Ошибка при создании текстуры логотипа: " .. tostring(tex))
+        end
+    else
+        print("[TM] Логотип по пути '" .. logo_path .. "' отсутствует. Используется стандартное оформление.")
+    end
+    -- Автоматическое создание папок под ресурс логотипа
+    if not doesDirectoryExist(getWorkingDirectory() .. "\\resource") then
+        createDirectory(getWorkingDirectory() .. "\\resource")
+    end
+    if not doesDirectoryExist(getWorkingDirectory() .. "\\resource\\ScriptTM") then
+        createDirectory(getWorkingDirectory() .. "\\resource\\ScriptTM")
+    end
+
+    -- Загрузка кастомного логотипа при наличии файла
+    if doesFileExist(logo_path) then
+        local ok, tex = pcall(imgui.CreateTextureFromFile, logo_path)
+        if ok and tex then
+            logo_texture = tex
+            print("[TM] Текстура логотипа успешно загружена!")
+        else
+            print("[TM] Ошибка при создании текстуры логотипа: " .. tostring(tex))
+        end
+    else
+        print("[TM] Логотип по пути '" .. logo_path .. "' отсутствует. Используется стандартное оформление.")
+    end
 
     -- СЛИЯНИЕ ШРИФТОВ НАПРЯМУЮ ИЗ OPERATIVE MEMORY (Оригинальный метод Mining Tools)
     if fa_ok and fa then
@@ -564,54 +839,111 @@ imgui.OnFrame(function() return window[0] or show_update_popup[0] or show_emoji_
 
     -- === ГЛАВНОЕ ОКНО ===
     if window[0] then
-        local sizeX, sizeY = 400, 480 
+        local sizeX, sizeY = 440, 520 
         imgui.SetNextWindowPos(imgui.ImVec2(resX / 2, resY / 2), imgui.Cond.FirstUseEver, imgui.ImVec2(0.5, 0.5))
         imgui.SetNextWindowSize(imgui.ImVec2(sizeX, sizeY), imgui.Cond.FirstUseEver)
         imgui.Begin('##MainSettings', window, imgui.WindowFlags.NoTitleBar + imgui.WindowFlags.NoResize + imgui.WindowFlags.NoCollapse + imgui.WindowFlags.NoScrollbar)
         local w_width = imgui.GetWindowWidth()
         
-        -- 1. Шапка
-        imgui.BeginChild("##header_main", imgui.ImVec2(w_width - 30, 40), true)
-            local header_text = "Script [TM]"
-            imgui.SetCursorPosY(10)
-            imgui.SetCursorPosX((w_width - 30 - imgui.CalcTextSize(header_text).x) / 2)
-            imgui.TextColored(imgui.ImVec4(0.95, 0.76, 0.18, 1.00), header_text)
+        -- 1. Шапка с Высокотехнологичным Векторным/Растровым Логотипом [Script TM]
+        imgui.BeginChild("##header_main", imgui.ImVec2(w_width - 30, 65), true)
+            local draw_list = imgui.GetWindowDrawList()
+            local p = imgui.GetCursorScreenPos()
+            
+            -- Рисуем золотой неоновый круг-подложку логотипа
+            local badge_center = imgui.ImVec2(p.x + 30, p.y + 25)
+            local badge_radius = 28.0
+            
+            -- Получаем цвет заливки из стиля и контурный цвет безопасным способом GetColorU32Vec4
+            local bg_color = imgui.GetColorU32Vec4(imgui.GetStyle().Colors[imgui.Col.ButtonActive])
+            local stroke_color = imgui.GetColorU32Vec4(imgui.ImVec4(0.95, 0.76, 0.18, 1.00))
+            
+            draw_list:AddCircleFilled(badge_center, badge_radius, bg_color, 32)
+            
+            -- Отрисовка кастомной картинки (логотипа) с автоматическим скруглением по маске золотого круга
+            if logo_texture then
+                local p_min = imgui.ImVec2(badge_center.x - 27, badge_center.y - 27)
+                local p_max = imgui.ImVec2(badge_center.x + 27, badge_center.y + 27)
+                local white_tint = imgui.GetColorU32Vec4(imgui.ImVec4(1.0, 1.0, 1.0, 1.0))
+                -- Используем AddImageRounded для идеального скругления краёв картинки в ровный круг
+                draw_list:AddImageRounded(logo_texture, p_min, p_max, imgui.ImVec2(0, 0), imgui.ImVec2(1, 1), white_tint, 27.0)
+            else
+                -- Отрисовка короны лидера внутри эмблемы, если файл логотипа не найден
+                imgui.SetCursorPos(imgui.ImVec2(15, 10))
+                local logo_icon = getIcon("CROWN", "")
+                if logo_icon ~= "" then
+                    imgui.TextColored(imgui.ImVec4(0.95, 0.76, 0.18, 1.00), logo_icon)
+                else
+                    imgui.TextColored(imgui.ImVec4(0.95, 0.76, 0.18, 1.00), "TM")
+                end
+            end
+            
+            -- Накладываем золотой неоновый контур ПОВЕРХ картинки для сокрытия неровностей и бесшовного стыка
+            draw_list:AddCircle(badge_center, badge_radius, stroke_color, 32, 1.5)
+            
+            -- Название бренда SCRIPT [TM] (Корона возвращена в текстовую часть заголовка)
+            imgui.SetCursorPos(imgui.ImVec2(75, 12))
+            imgui.PushStyleVarFloat(imgui.StyleVar.FrameBorderSize, 1.0)
+            local crown_prefix = getIcon("CROWN", "")
+            imgui.TextColored(imgui.ImVec4(0.95, 0.76, 0.18, 1.00), crown_prefix .. "SCRIPT [TM]")
+            imgui.PopStyleVar()
+            
+            -- Платиновый статус-подзаголовок
+            imgui.SetCursorPos(imgui.ImVec2(75, 34))
+            imgui.PushStyleColor(imgui.Col.Text, imgui.ImVec4(0.60, 0.65, 0.73, 1.00))
+            imgui.Text(u8("Телеграм логгер"))
+            imgui.PopStyleColor()
         imgui.EndChild()
         imgui.Dummy(imgui.ImVec2(0, 10))
         
         -- 2. Переключатель Табов
-        local tab_btn_w = (w_width - 40) / 3
+        local tab_btn_w = (w_width - 45) / 4
         local is_tab1_active = (currentTab[0] == 1)
         local is_tab2_active = (currentTab[0] == 2)
         local is_tab3_active = (currentTab[0] == 3)
+        local is_tab4_active = (currentTab[0] == 4)
         
         -- Таб 1 (Настройки)
+		
+        local stat_tab_label = getIcon("GEAR", "") .. u8('Настройки')
         if is_tab1_active then imgui.PushStyleColor(imgui.Col.Button, imgui.ImVec4(0.18, 0.80, 0.44, 0.3)) end
-        if imgui.Button(u8('Настройки'), imgui.ImVec2(tab_btn_w, 30)) then currentTab[0] = 1 end
+        if imgui.Button(stat_tab_label, imgui.ImVec2(tab_btn_w, 30)) then currentTab[0] = 1 end
         if is_tab1_active then imgui.PopStyleColor() end
         
         imgui.SameLine(nil, 5)
         
         -- Таб 2 (Уведомления)
+        local stat_tab_label = getIcon("BELL", "") .. u8('Уведомления')
         if is_tab2_active then imgui.PushStyleColor(imgui.Col.Button, imgui.ImVec4(0.18, 0.80, 0.44, 0.3)) end
-        if imgui.Button(u8('Уведомления'), imgui.ImVec2(tab_btn_w, 30)) then currentTab[0] = 2 end
+        if imgui.Button(stat_tab_label, imgui.ImVec2(tab_btn_w, 30)) then currentTab[0] = 2 end
         if is_tab2_active then imgui.PopStyleColor() end
 
         imgui.SameLine(nil, 5)
 
         -- Таб 3 (Стилизация)
+		
+		
+        local stat_tab_label = getIcon("SLIDERS", "") .. u8('Стилизация')
         if is_tab3_active then imgui.PushStyleColor(imgui.Col.Button, imgui.ImVec4(0.18, 0.80, 0.44, 0.3)) end
-        if imgui.Button(u8('Стилизация'), imgui.ImVec2(tab_btn_w, 30)) then currentTab[0] = 3 end
+        if imgui.Button(stat_tab_label, imgui.ImVec2(tab_btn_w, 30)) then currentTab[0] = 3 end
         if is_tab3_active then imgui.PopStyleColor() end
+
+        imgui.SameLine(nil, 5)
+
+        -- Таб 4 (Статистика)
+        local stat_tab_label = getIcon("CHART_LINE", "") .. u8('Статистика')
+        if is_tab4_active then imgui.PushStyleColor(imgui.Col.Button, imgui.ImVec4(0.18, 0.80, 0.44, 0.3)) end
+        if imgui.Button(stat_tab_label, imgui.ImVec2(tab_btn_w, 30)) then currentTab[0] = 4 end
+        if is_tab4_active then imgui.PopStyleColor() end
 
         imgui.Dummy(imgui.ImVec2(0, 10))
 
 
         -- 3. Основной контент
-        imgui.BeginChild("##main_content", imgui.ImVec2(w_width - 30, sizeY - 160), true)
+        imgui.BeginChild("##main_content", imgui.ImVec2(w_width - 30, sizeY - 185), true)
             
             if currentTab[0] == 1 then -- ВКЛАДКА НАСТРОЙКИ
-                imgui.TextColored(imgui.ImVec4(0.95, 0.76, 0.18, 1.00), u8("• Telegram Настройки"))
+                imgui.TextColored(imgui.ImVec4(0.95, 0.76, 0.18, 1.00), getIcon("GEAR", "") .. u8("Telegram Настройки"))
                 imgui.Dummy(imgui.ImVec2(0, 5))
                 
                 imgui.TextDisabled(u8("ID Чата:"))
@@ -638,14 +970,21 @@ imgui.OnFrame(function() return window[0] or show_update_popup[0] or show_emoji_
                 if imgui.Button(u8('Проверить соединение (Тест)'), imgui.ImVec2(-1, 30)) then
                     sendTelegramMessage("Проверка связи с Script [TM] {emoji_wave}")
                 end
-				-- В конце первой вкладки (Настройки)
-if imgui.Button(u8('Проверить обновления'), imgui.ImVec2(-1, 30)) then
-    checkUpdate()
+
+                if imgui.Button(u8('Проверить обновления'), imgui.ImVec2(-1, 30)) then
+                    checkUpdate()
+                end
+				if imgui.Button(u8('Обновить Список предметов)'), imgui.ImVec2(-1, 30)) then
+    downloadLogo()
+    downloadItemsDatabase()
+    show_arz_notify('success', 'TM', 'Файлы обновлены: logo.png, items.json', 3000)
 end
 
 
+
+
             elseif currentTab[0] == 2 then -- ВКЛАДКА УВЕДОМЛЕНИЯ
-                imgui.TextColored(imgui.ImVec4(0.95, 0.76, 0.18, 1.00), u8("• Управление уведомлениями"))
+                imgui.TextColored(imgui.ImVec4(0.95, 0.76, 0.18, 1.00), getIcon("BELL", "") .. u8("Управление уведомлениями"))
                 imgui.Dummy(imgui.ImVec2(0, 5))
 
                 if imgui.Checkbox(u8('Включить/выключить UI уведомления'), enableUINotifications) then
@@ -714,8 +1053,8 @@ end
                     end
                 end
 
-            elseif currentTab[0] == 3 then -- ВКЛАДКА СТИЛИЗАЦИЯ
-                imgui.TextColored(imgui.ImVec4(0.95, 0.76, 0.18, 1.00), u8("• Кастомизация уведомлений"))
+            elseif currentTab[0] == 3 then -- ВКЛАДКА СТИЛИЗАЦИЯ SLIDERS
+                imgui.TextColored(imgui.ImVec4(0.95, 0.76, 0.18, 1.00), getIcon("SLIDERS", "") .. u8("Управление уведомлениями"))
                 imgui.TextDisabled(u8("Кликните на кнопку, чтобы выбрать новый смайл:"))
                 imgui.Dummy(imgui.ImVec2(0, 5))
 
@@ -726,13 +1065,12 @@ end
                     imgui.PushStyleColor(imgui.Col.ButtonHovered, imgui.ImVec4(0.18, 0.80, 0.44, 0.4))
                     imgui.PushStyleVarVec2(imgui.StyleVar.FramePadding, imgui.ImVec2(6, 4))
 
-                    -- Улучшенный помощник строк с кнопкой "Тест" БЕЗ PushID
                     local function drawEmojiConfigRow(label, config_key, test_message_base)
                         imgui.Text(label)
                         imgui.SameLine(180)
                         local render_str = getEmojiRenderString(cfg.config[config_key])
                         
-                        -- Кнопка выбора (уникальность за счет ##btn_...)
+                        -- Кнопка выбора
                         if imgui.Button(render_str .. "##btn_" .. config_key, imgui.ImVec2(100, 24)) then
                             selected_emoji_setting = config_key
                             show_emoji_selector_modal[0] = true
@@ -740,7 +1078,7 @@ end
 
                         if test_message_base then
                             imgui.SameLine()
-                            -- Кнопка ТЕСТ (уникальность за счет ##test_...)
+                            -- Кнопка ТЕСТ
                             if imgui.Button(u8("Тест##test_" .. config_key), imgui.ImVec2(50, 24)) then
                                 local current_emoji_key = cfg.config[config_key]
                                 local emoji_tag = current_emoji_key ~= "emoji_none" and "{" .. current_emoji_key .. "} " or ""
@@ -803,8 +1141,117 @@ end
                     imgui.PopStyleColor(2)
                 imgui.EndChild()
                 imgui.PopStyleColor()
-            end
+
+            elseif currentTab[0] == 4 then -- ВКЛАДКА СТАТИСТИКА
+                imgui.TextColored(imgui.ImVec4(0.95, 0.76, 0.18, 1.00), getIcon("CHART_LINE", "") .. u8("Ежедневный Финансовый Журнал"))
+                
+                -- КНОПКА [?] С КРАСИВЫМ ОФОРМЛЕНИЕМ ИКОНКИ
+                imgui.SameLine(w_width - 65)
+                local q_icon = (font_loaded and fa_ok and fa and fa.CIRCLE_QUESTION) and (fa.CIRCLE_QUESTION .. " ") or "[?] "
+                imgui.PushStyleColor(imgui.Col.Button, imgui.ImVec4(0.95, 0.76, 0.18, 0.2))
+                imgui.PushStyleColor(imgui.Col.ButtonHovered, imgui.ImVec4(0.95, 0.76, 0.18, 0.4))
+                if imgui.Button(q_icon .. "##projection_btn", imgui.ImVec2(32, 24)) then
+                    imgui.OpenPopup("ProjectionPopup")
+                end
+                imgui.PopStyleColor(2)
+                
+                -- РЕНДЕРИНГ ОКНА МИНИ-СТАТИСТИКИ ПРОГНОЗА С РАЗДЕЛЕНИЕМ ЧИСЕЛ ТОЧКАМИ
+                imgui.SetNextWindowSize(imgui.ImVec2(380, 420), imgui.Cond.Always)
+                if imgui.BeginPopup("ProjectionPopup") then
+                    imgui.TextColored(imgui.ImVec4(0.95, 0.76, 0.18, 1.00), getIcon("CHART_LINE", "") .. u8("Прогноз прибыли (при непрерывной игре)"))
+                    imgui.Separator()
+                    imgui.Dummy(imgui.ImVec2(0, 3))
+                    
+                    local last_w = session_stats.last_payday_wage or 0
+                    local last_d = session_stats.last_payday_dep or 0
+                    local last_a = session_stats.last_payday_az or 0
+                    
+                    -- Последний PayDay Card
+                    imgui.TextColored(imgui.ImVec4(0.60, 0.65, 0.73, 1.00), getIcon("CLOCK", "") .. u8("Последний полученный PayDay:"))
+                    imgui.BeginChild("##last_payday_card", imgui.ImVec2(0, 70), true)
+                        imgui.Text(getIcon("DOLLAR_SIGN", "") .. u8("Зарплата: $") .. formatNumber(last_w))
+                        imgui.Text(getIcon("CREDIT_CARD", "") .. u8("Депозит: $") .. formatNumber(last_d))
+                        imgui.Text(getIcon("COINS", "") .. u8("AZ-Coins: ") .. formatNumber(last_a) .. " AZ")
+                    imgui.EndChild()
+                    imgui.Dummy(imgui.ImVec2(0, 5))
+                    
+                    -- Прогнозы
+                    local function drawProjectionCard(title_label, icon_name, multiplier)
+                        imgui.TextColored(imgui.ImVec4(0.18, 0.80, 0.44, 1.00), getIcon(icon_name, "") .. u8(title_label))
+                        imgui.BeginChild("##card_" .. title_label, imgui.ImVec2(0, 70), true)
+                            imgui.Text(getIcon("DOLLAR_SIGN", "") .. u8("Зарплата: $") .. formatNumber(last_w * multiplier))
+                            imgui.Text(getIcon("CREDIT_CARD", "") .. u8("Депозит: $") .. formatNumber(last_d * multiplier))
+                            imgui.Text(getIcon("COINS", "") .. u8("AZ: ") .. formatNumber(last_a * multiplier) .. " AZ")
+                        imgui.EndChild()
+                        imgui.Dummy(imgui.ImVec2(0, 5))
+                    end
+                    
+                    drawProjectionCard("За 1 час:", "CLOCK", 2)
+                    drawProjectionCard("За 24 часа:", "CALENDAR_DAYS", 48)
+                    drawProjectionCard("За месяц:", "CALENDAR_DAYS", 1440)
+                    
+                    imgui.EndPopup()
+                end
+
+                imgui.Separator()
+                imgui.Dummy(imgui.ImVec2(0, 5))
+
+                -- КРАСИВАЯ КАРТОЧКА СЕССИИ (Date, Time, Quests)
+                imgui.BeginChild("##session_info_card", imgui.ImVec2(0, 75), true)
+                    imgui.TextColored(imgui.ImVec4(0.60, 0.65, 0.73, 1.00), getIcon("CALENDAR_DAYS", "") .. u8("Дата сбора данных: ") .. tostring(session_stats.last_active_date))
+                    imgui.TextColored(imgui.ImVec4(0.60, 0.65, 0.73, 1.00), getIcon("CLOCK", "") .. u8("Время в игре сегодня: ") .. format_game_time(session_stats.time_in_game))
+                    imgui.TextColored(imgui.ImVec4(0.60, 0.65, 0.73, 1.00), getIcon("TROPHY", "") .. u8("Выполнено квестов за сегодня: ") .. tostring(session_stats.quests_completed))
                 imgui.EndChild()
+                
+                imgui.Dummy(imgui.ImVec2(0, 5))
+
+                imgui.TextColored(imgui.ImVec4(0.18, 0.80, 0.44, 1.00), getIcon("MONEY_BILL_WAVE", "") .. u8("Чистый баланс за сегодня:"))
+                
+                -- КРАСИВАЯ КАРТОЧКА БАЛАНСА С РАЗДЕЛЕНИЕМ ЧИСЕЛ ТОЧКАМИ
+                imgui.BeginChild("##finance_card", imgui.ImVec2(0, 80), true)
+                    local function drawStatRow(icon_name, label, value, val_color)
+                        imgui.TextColored(imgui.ImVec4(0.9, 0.9, 0.9, 1.0), getIcon(icon_name, "") .. u8(label))
+                        imgui.SameLine(220)
+                        imgui.TextColored(val_color or imgui.ImVec4(1,1,1,1), value)
+                    end
+                    drawStatRow("DOLLAR_SIGN", "Получено зарплат (общая):", "$" .. formatNumber(session_stats.wages_accumulated), imgui.ImVec4(0.18, 0.80, 0.44, 1.00))
+                    drawStatRow("CREDIT_CARD", "Прирост по депозиту:", "$" .. formatNumber(session_stats.dep_growth), imgui.ImVec4(0.18, 0.80, 0.44, 1.00))
+                    drawStatRow("COINS", "Заработано AZ-Coins:", formatNumber(session_stats.az_accumulated) .. " AZ", imgui.ImVec4(0.95, 0.76, 0.18, 1.00))
+                imgui.EndChild()
+
+                imgui.Dummy(imgui.ImVec2(0, 10))
+
+                -- Кнопка ручной отправки текущей статистики
+                imgui.PushStyleColor(imgui.Col.Button, imgui.ImVec4(0.18, 0.80, 0.44, 0.2))
+                imgui.PushStyleColor(imgui.Col.ButtonHovered, imgui.ImVec4(0.18, 0.80, 0.44, 0.4))
+                imgui.PushStyleColor(imgui.Col.ButtonActive, imgui.ImVec4(0.18, 0.80, 0.44, 0.1))
+                if imgui.Button(getIcon("PAPER_PLANE", "") .. u8("Отправить текущий отчёт в Telegram"), imgui.ImVec2(-1, 30)) then
+                    local report_text = get_session_report_text(session_stats.last_active_date)
+                    sendTelegramMessage(report_text)
+                    show_arz_notify('success', 'Отчет', 'Сводный чек-отчет отправлен в Telegram!', 3000)
+                end
+                imgui.PopStyleColor(3)
+
+                imgui.Dummy(imgui.ImVec2(0, 5))
+
+                imgui.PushStyleColor(imgui.Col.Button, imgui.ImVec4(0.95, 0.26, 0.26, 0.15))
+                imgui.PushStyleColor(imgui.Col.ButtonHovered, imgui.ImVec4(0.95, 0.26, 0.26, 0.3))
+                imgui.PushStyleColor(imgui.Col.ButtonActive, imgui.ImVec4(0.95, 0.26, 0.26, 0.1))
+                if imgui.Button(getIcon("TRASH", "") .. u8("Принудительно сбросить и начать новый день"), imgui.ImVec2(-1, 24)) then
+                    session_stats.last_active_date = os.date("%d.%m.%Y")
+                    session_stats.quests_completed = 0
+                    session_stats.wages_accumulated = 0
+                    session_stats.dep_growth = 0
+                    session_stats.az_accumulated = 0
+                    session_stats.time_in_game = 0
+                    session_stats.report_sent = false
+                    save_stats_to_file()
+                    show_arz_notify('info', 'Сброс', 'Статистика дня успешно обнулена.', 3000)
+                end
+                imgui.PopStyleColor(3)
+
+            end
+            imgui.EndChild()
 
         -- 4. Футер
         imgui.Dummy(imgui.ImVec2(0, 1))
@@ -814,8 +1261,7 @@ end
         end
 
         imgui.End()
-		
-    end
+		end
 
     -- === ПОЛНОЭКРАННОЕ ОКНО ВЫБОРА СМАЙЛИКА ===
     if show_emoji_selector_modal[0] then
@@ -898,9 +1344,8 @@ end
 
             imgui.Dummy(imgui.ImVec2(0, 10))
 
-             local safe_remote_ver = tostring(remote_version_text or "0.0.0")
+            local safe_remote_ver = tostring(remote_version_text or "0.0.0")
             
-            -- Отрисовка стрелочки из шрифта (если загружен), иначе запасной вариант
             imgui.SetCursorPosX((w_width - 30 - (imgui.CalcTextSize(u8("Текущая ") .. SCRIPT_VERSION).x + imgui.CalcTextSize(u8("Новая ") .. safe_remote_ver).x + 30)) / 2)
             imgui.TextColored(imgui.ImVec4(0.60, 0.65, 0.73, 1.00), u8("Текущая "))
             imgui.SameLine()
@@ -977,28 +1422,31 @@ function samp.onServerMessage(color, text)
     end
 
     -- 2. Логика добавления предметов (Инвентарь)
-    if itemAdding[0] and color == -65281 then
+    if color == -65281 or text:find("Вам добавлен предмет") or text:find("добавлен предмет") then
         local itemId = text:match(":item(%d+):")
         if itemId then
             local name = getItemName(itemId)
             if not sendUnknownItems[0] and name:find("ID:") then return end
             
-            local item_tag = ""
-            if cfg.config.itemEmoji ~= "emoji_none" then
-                item_tag = "{" .. cfg.config.itemEmoji .. "} "
-            end
-            local pack_tag = " {emoji_backpack}"
+            -- ПРЕДМЕТЫ В СТАТИСТИКЕ СТЁРТЫ, ПРЯМАЯ ПЕРЕДАЧА СООБЩЕНИЯ В TELEGRAM РАБОТАЕТ В ДЕФОЛТНОМ РЕЖИМЕ
+            if itemAdding[0] then
+                local item_tag = ""
+                if cfg.config.itemEmoji ~= "emoji_none" then
+                    item_tag = "{" .. cfg.config.itemEmoji .. "} "
+                end
+                local pack_tag = " {emoji_backpack}"
 
-            local message_to_send
-            if shortMessage[0] then
-                message_to_send = text:gsub(":item%d+:", "'" .. name .. "'")
-                if message_to_send:sub(-1) == "." then message_to_send = message_to_send:sub(1, -2) end
-                message_to_send = message_to_send .. ", используйте клавишу 'Y' или /invent"
-            else
-                message_to_send = (item_tag .. "Вам был добавлен предмет %s" .. pack_tag):format(name)
-            end
+                local message_to_send
+                if shortMessage[0] then
+                    message_to_send = text:gsub(":item%d+:", "'" .. name .. "'")
+                    if message_to_send:sub(-1) == "." then message_to_send = message_to_send:sub(1, -2) end
+                    message_to_send = message_to_send .. ", используйте клавишу 'Y' или /invent"
+                else
+                    message_to_send = (item_tag .. "Вам был добавлен предмет %s" .. pack_tag):format(name)
+                end
 
-            sendTelegramMessage(message_to_send)
+                sendTelegramMessage(message_to_send)
+            end
             return
         end
     end
@@ -1013,10 +1461,14 @@ function samp.onServerMessage(color, text)
     end
  
     -- 4. Квесты и Боевой Пропуск
-    if quest[0] then
+    if text:find("^%[Боевой Пропуск%]") or text:find("выполнили задание") then
         local cleaned = text:gsub("{%x%x%x%x%x%x}", ""):gsub("^%s+", ""):gsub("%s+$", "")
 
-        if cleaned:find("^%[Боевой Пропуск%]") then
+        -- ЗАПИСЬ КВЕСТА В СТАТИСТИКУ И ЗАПИСЬ В ФАЙЛ
+        session_stats.quests_completed = session_stats.quests_completed + 1
+        save_stats_to_file()
+
+        if quest[0] and cleaned:find("^%[Боевой Пропуск%]") then
             local body = cleaned:match("^%[Боевой Пропуск%]%s*(.*)") or ""
             local event_type = nil    
             local item_or_task_name = nil 
@@ -1043,60 +1495,98 @@ function samp.onServerMessage(color, text)
     end
  
     -- 5. PayDay
-    if payday[0] then
-        if text:find('БАНКОВСКИЙ ЧЕК') or text:find('Банковский чек') then
-            getPayday = true
-            listPayday = {}
-            paydayTimeout = os.time() + 5
-            
-            local h_tag = ""
-            if cfg.config.paydayHeaderEmoji ~= "emoji_none" then
-                local raw_h = "{" .. cfg.config.paydayHeaderEmoji .. "}"
-                h_tag = raw_h
+    PayDayLineDetector = false
+    if text:find('БАНКОВСКИЙ ЧЕК') or text:find('Банковский чек') then
+        getPayday = true
+        listPayday = {}
+        paydayTimeout = os.time() + 5
+        
+        local h_tag = ""
+        if cfg.config.paydayHeaderEmoji ~= "emoji_none" then
+            local raw_h = "{" .. cfg.config.paydayHeaderEmoji .. "}"
+            h_tag = raw_h
+        end
+        table.insert(listPayday, h_tag .. "PayDay | БАНКОВСКИЙ ЧЕК" .. h_tag)
+        
+    elseif getPayday then
+        local cleanLine = text:gsub('{......}', '')
+        
+        local bank_tag = cfg.config.paydayBankEmoji ~= "emoji_none" and "{" .. cfg.config.paydayBankEmoji .. "}" or ""
+        local dep_tag = cfg.config.paydayDepositEmoji ~= "emoji_none" and "{" .. cfg.config.paydayDepositEmoji .. "}" or ""
+        local wage_tag = cfg.config.paydayWageEmoji ~= "emoji_none" and "{" .. cfg.config.paydayWageEmoji .. "}" or ""
+        local az_tag = cfg.config.paydayAZEmoji ~= "emoji_none" and "{" .. cfg.config.paydayAZEmoji .. "}" or ""
+        
+        local keep = false
+        if cleanLine:find('==========') or cleanLine:find('__________') then
+            keep = true
+        elseif cleanLine:find('Текущая сумма в банке:') then
+            -- Пропускаем, так как "Прирост в банке" удален из вычислений
+            cleanLine = cleanLine:gsub(':CASH:', bank_tag)
+            keep = true
+        elseif cleanLine:find('В данный момент у вас') and cleanLine:find('респектов') then
+            keep = true
+        elseif cleanLine:find('Текущая сумма на депозите:') then
+            -- === КРИТИЧЕСКИЙ ФИКС: ВЫТЯГИВАЕМ ТОЛЬКО ПРИБАВКУ ДЕПОЗИТА ИЗ СКOБOК ===
+            -- "Текущая сумма на депозите: $ 367.893.404 (+ $ 913.796)"
+            local dep_text = cleanLine:match("депозите:.*%((.+)%)")
+            local dep_val = 0
+            if dep_text then
+                dep_val = parse_numeric_value(dep_text)
             end
-            table.insert(listPayday, h_tag .. "PayDay | БАНКОВСКИЙ ЧЕК" .. h_tag)
             
-        elseif getPayday then
-            local cleanLine = text:gsub('{......}', '')
-            
-            local bank_tag = cfg.config.paydayBankEmoji ~= "emoji_none" and "{" .. cfg.config.paydayBankEmoji .. "}" or ""
-            local dep_tag = cfg.config.paydayDepositEmoji ~= "emoji_none" and "{" .. cfg.config.paydayDepositEmoji .. "}" or ""
-            local wage_tag = cfg.config.paydayWageEmoji ~= "emoji_none" and "{" .. cfg.config.paydayWageEmoji .. "}" or ""
-            local az_tag = cfg.config.paydayAZEmoji ~= "emoji_none" and "{" .. cfg.config.paydayAZEmoji .. "}" or ""
-            
-            local keep = false
-            if cleanLine:find('==========') or cleanLine:find('__________') then
-                keep = true
-            elseif cleanLine:find('Текущая сумма в банке:') then
-                cleanLine = cleanLine:gsub(':CASH:', bank_tag)
-                keep = true
-            elseif cleanLine:find('В данный момент у вас') and cleanLine:find('респектов') then
-                keep = true
-            elseif cleanLine:find('Текущая сумма на депозите:') then
-                cleanLine = cleanLine:gsub(':CASH:', dep_tag)
-                keep = true
-            elseif cleanLine:find('Общая заработная плата:') then
-                cleanLine = cleanLine:gsub(':CASH:', wage_tag)
-                keep = true
-            elseif cleanLine:find('Баланс на донат') then
-                cleanLine = cleanLine:gsub('AZ', az_tag)
-                keep = true
+            session_stats.dep_growth = (session_stats.dep_growth or 0) + dep_val
+            session_stats.last_payday_dep = dep_val
+
+            cleanLine = cleanLine:gsub(':CASH:', dep_tag)
+            keep = true
+            PayDayLineDetector = true
+        elseif cleanLine:find('Общая заработная плата:') then
+            -- === НАКОПЛЕНИЕ ЗАРПЛАТЫ ===
+            local wage_val = parse_numeric_value(cleanLine:match("плата:%s*(.*)"))
+            session_stats.wages_accumulated = (session_stats.wages_accumulated or 0) + wage_val
+            session_stats.last_payday_wage = wage_val
+
+            cleanLine = cleanLine:gsub(':CASH:', wage_tag)
+            keep = true
+            PayDayLineDetector = true
+        elseif cleanLine:find('Баланс на донат') then
+            -- === КРИТИЧЕСКИЙ ФИКС: ВЫТЯГИВАЕМ ТОЛЬКО ПРИБАВКУ AZ ИЗ СКОБОК ===
+            -- "Баланс на донат-счет: 86902 AZ (+12 AZ)"
+            local az_text = cleanLine:match("донат.-%((.+)%)")
+            local az_val = 0
+            if az_text then
+                az_val = parse_numeric_value(az_text)
             end
             
-            if keep then
-                table.insert(listPayday, cleanLine)
-                if (text:find('==========') or text:find('__________')) and #listPayday > 4 then
-                    sendTelegramMessage(table.concat(listPayday, '\n'))
-                    getPayday = false 
-                end
-            end
+            session_stats.az_accumulated = (session_stats.az_accumulated or 0) + az_val
+            session_stats.last_payday_az = az_val
+
+            cleanLine = cleanLine:gsub('AZ', az_tag)
+            keep = true
+            PayDayLineDetector = true
+        end
+        
+        if PayDayLineDetector then
+            save_stats_to_file()
         end
 
-        if getPayday and os.time() > paydayTimeout then
-            if #listPayday > 2 then
+        if keep then
+            table.insert(listPayday, cleanLine)
+            if (text:find('==========') or text:find('__________')) and #listPayday > 4 then
+                if payday[0] then
+                    sendTelegramMessage(table.concat(listPayday, '\n'))
+                end
+                getPayday = false 
+            end
+        end
+    end
+
+    if getPayday and os.time() > paydayTimeout then
+        if #listPayday > 2 then
+            if payday[0] then
                 sendTelegramMessage(table.concat(listPayday, '\n'))
             end
-            getPayday = false 
         end
+        getPayday = false 
     end
 end
