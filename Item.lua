@@ -1,4 +1,6 @@
 --[[
+    Script [TM] - Ежедневный Финансовый Журнал и Трекер
+    Разработчик: Dima_Shmakov
 ]]
 
 script_properties('work-in-pause')
@@ -44,7 +46,7 @@ local stats_file_path = script_folder .. "\\ScriptTM_stats.json"
 local ITEMS_DB_URL = "https://raw.githubusercontent.com/dmashmakov2000-coder/item11/main/items.json"
 local LOGO_URL = "https://raw.githubusercontent.com/dmashmakov2000-coder/item11/main/logo1.png"
 
-local SCRIPT_VERSION = "0.2.0"
+local SCRIPT_VERSION = "0.3.0"
 local UPDATE_URL = "https://raw.githubusercontent.com/dmashmakov2000-coder/item11/main/Item.lua"
 local CFG_FILENAME = 'Script [TM].ini'
 
@@ -53,7 +55,16 @@ local DEFAULT_API = "https://api.telegram.org"
 local wasOpenedByCommand = false
 
 local UPDATE_INFO = [[
-Привет
+    Полное сворачивание блока трекера цели
+    Исправлен средний подсчет дохода
+    Во вкладке игнор предметов теперь отображается 
+список игнорируемых предметов 
+    Добавлен лог трейда
+	Добавлен предпросмотр сообщений
+	Исправлено ошибочное логирывание предметов
+Когда в чат писали другие игроки
+
+	
 ]]
 
 -- === ПАКЕТ ИЗ 33 СМАЙЛИКОВ ===
@@ -142,7 +153,9 @@ local session_stats = {
     btc_income = 0,
     az_accumulated = 0,
     trade_income = 0,
+    deal_income = 0, -- Доход от сделок через систему обмена
     expenses_accumulated = 0,
+
     manually_added_money = 0,
     manually_added_az = 0,
     report_sent = false,
@@ -158,9 +171,11 @@ local session_stats = {
     goal_scope = 1,
     goal_notified = false,
     goal_configured = false,
+    goal_enabled = true,
     goal_start_from_zero = true,
     goal_start_money = 0,
-    goal_start_az = 0
+    goal_start_az = 0,
+    ignored_items = {}
 }
 
 local items_name = {}
@@ -168,25 +183,28 @@ local items_loaded = false
 local font_loaded = false
 local logo_texture = nil
 
-local show_add_funds_modal = imgui.new.bool(false)
-local add_funds_input = imgui.new.char[64]("")
+show_add_funds_modal = imgui.new.bool(false)
+add_funds_input = imgui.new.char[64]("")
 
-local show_chart_window = imgui.new.bool(false)
-local show_goal_settings = imgui.new.bool(false)
-local show_projection_pinned = imgui.new.bool(false) -- Закреплено ли окно прогноза
-local is_proj_window_hovered = false
+show_chart_window = imgui.new.bool(false)
+show_goal_settings = imgui.new.bool(false)
+show_projection_pinned = imgui.new.bool(false)
+is_proj_window_hovered = false
 
-local item_search_input = imgui.new.char[128]("") -- Буфер для поиска предметов
+item_search_input = imgui.new.char[128]("")
 
+chart_view_mode = imgui.new.int(0) -- 0 - столбчатый, 1 - линейный
+chart_days_period = imgui.new.int(7)
 
+goal_edit_amount = imgui.new.char[64]("10000000000")
+goal_edit_type = imgui.new.int(1)
+goal_edit_scope = imgui.new.int(1)
+goal_edit_start_zero = imgui.new.bool(true)
 
-local chart_view_mode = imgui.new.int(0) -- 0 - столбчатый, 1 - линейный
-local chart_days_period = imgui.new.int(7)
-
-local goal_edit_amount = imgui.new.char[64]("10000000000")
-local goal_edit_type = imgui.new.int(1)
-local goal_edit_scope = imgui.new.int(1)
-local goal_edit_start_zero = imgui.new.bool(true)
+-- Переменные отслеживания баланса при обмене
+local tm_trade_waiting_money = false
+local tm_trade_waiting_time = 0
+local tm_last_money = nil
 
 -- === ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ===
 local function formatNumber(amount)
@@ -225,8 +243,9 @@ local function getCurrentIncome()
                          (session_stats.dep_growth or 0) + 
                          (session_stats.biz_income or 0) + 
                          (session_stats.btc_income or 0) + 
-                         (session_stats.trade_income or 0)
-    
+                         (session_stats.trade_income or 0) +
+                         (session_stats.deal_income or 0)
+
     local total_expenses = math.abs(tonumber(session_stats.expenses_accumulated) or 0)
     return total_earned - total_expenses
 end
@@ -268,7 +287,9 @@ local function save_stats_to_file()
         btc_income = session_stats.btc_income,
         az_accumulated = session_stats.az_accumulated,
         trade_income = session_stats.trade_income or 0,
+        deal_income = session_stats.deal_income or 0,
         expenses_accumulated = math.abs(tonumber(session_stats.expenses_accumulated) or 0),
+
         manually_added_money = session_stats.manually_added_money,
         manually_added_az = session_stats.manually_added_az,   
         report_sent = session_stats.report_sent,
@@ -281,6 +302,7 @@ local function save_stats_to_file()
         goal_scope = session_stats.goal_scope or 1,
         goal_notified = session_stats.goal_notified or false,
         goal_configured = session_stats.goal_configured or false,
+        goal_enabled = (session_stats.goal_enabled == nil) and true or session_stats.goal_enabled,
         goal_start_from_zero = session_stats.goal_start_from_zero or false,
         goal_start_money = session_stats.goal_start_money or 0,
         goal_start_az = session_stats.goal_start_az or 0,
@@ -471,6 +493,56 @@ local function format_game_time(seconds)
     return string.format("%02d:%02d:%02d", h, m, s)
 end
 
+-- Helper to get rendered emoji character for display in tooltips
+-- Помещаем здесь, чтобы cfg уже был загружен
+local function getEmojiForDisplay(config_key)
+    if not cfg or not cfg.config then return "" end
+    local emoji_key = cfg.config[config_key]
+    if emoji_key and emoji_key ~= "emoji_none" then
+        for _, e in ipairs(emojis_list) do
+            if e.key == emoji_key then
+                return u8(e.char) .. " "
+            end
+        end
+    end
+    return ""
+end
+
+
+
+
+
+
+-- === НОВАЯ ФУНКЦИЯ ДЛЯ РАСЧЕТА СРЕДНЕГО ДОХОДА/AZ ЗА ВСЕ ВРЕМЯ ===
+local function get_average_daily_value(value_type) -- 'income' или 'az_accumulated'
+    local total_sum = 0
+    local total_days = 0
+    local today_str = os.date("%d.%m.%Y")
+
+    -- Суммируем все данные из истории
+    for date_str, data in pairs(session_stats.daily_history or {}) do
+        local val = tonumber(data[value_type]) or 0
+        total_sum = total_sum + val
+        total_days = total_days + 1
+    end
+
+    -- Добавляем данные за текущий день, если они еще не в истории
+    -- (Текущий день попадает в историю при смене даты в полночь)
+    if not session_stats.daily_history[today_str] then
+        if value_type == 'income' then
+            total_sum = total_sum + getCurrentIncome() -- Чистый баланс за текущий день
+        elseif value_type == 'az_accumulated' then
+            total_sum = total_sum + (session_stats.az_accumulated or 0) -- AZ за текущий день
+        end
+        total_days = total_days + 1
+    end
+    
+    if total_days > 0 then
+        return total_sum / total_days
+    end
+    return 0
+end
+
 -- === УНИВЕРСАЛЬНЫЙ ЗАГРУЗЧИК БАЗЫ ДАННЫХ ===
 function loadItemsDatabase()
     if doesFileExist(items_db_path) then
@@ -520,6 +592,7 @@ function downloadItemsDatabase()
         end
     end)
 end
+
 -- === БЕЗОПАСНОЕ УДАЛЕНИЕ И ПЕРЕЗАГРУЗКА БАЗЫ И ЛОГОТИПА ===
 function updateFilesAsync()
     if not requests_ok then 
@@ -530,11 +603,9 @@ function updateFilesAsync()
     lua_thread.create(function()
         show_arz_notify('info', 'TM', 'Удаление старых файлов...', 2000)
         
-        -- 1. Отключаем ссылку на логотип, чтобы разблокировать файл на диске
         logo_texture = nil
         wait(500)
 
-        -- 2. Удаляем старые файлы
         if doesFileExist(logo_path) then 
             os.remove(logo_path) 
         end
@@ -547,7 +618,6 @@ function updateFilesAsync()
 
         local requests = require('requests')
 
-        -- 3. Скачиваем логотип по новой
         local ok_logo, res_logo = pcall(requests.get, LOGO_URL)
         if ok_logo and res_logo.status_code == 200 then
             local f = io.open(logo_path, "wb")
@@ -559,7 +629,6 @@ function updateFilesAsync()
 
         wait(500)
 
-        -- 4. Скачиваем новую базу предметов items.json
         local ok_db, res_db = pcall(requests.get, ITEMS_DB_URL)
         if ok_db and res_db.status_code == 200 then
             local f = io.open(items_db_path, "w")
@@ -571,7 +640,6 @@ function updateFilesAsync()
 
         wait(500)
 
-        -- 5. Перезагружаем предметы в память и создаём текстуру
         loadItemsDatabase()
         if doesFileExist(logo_path) then
             local ok_tex, tex = pcall(imgui.CreateTextureFromFile, logo_path)
@@ -612,12 +680,14 @@ local function get_session_report_text(date_str)
     local dep_val = session_stats.dep_growth or 0
     local biz_val = session_stats.biz_income or 0
     local btc_val = session_stats.btc_income or 0
+    local deal_val = session_stats.deal_income or 0
     local quests_val = session_stats.quests_completed or 0
-    local total_val = wage_val + dep_val + biz_val + btc_val
+
+    local total_val = wage_val + dep_val + biz_val + btc_val + deal_val
 
     local lines = {
         "{emoji_bag} *ЕЖЕДНЕВНЫЙ ОТЧЁТ ЗА " .. tostring(target_date) .. "*",
-        "====================================",
+        "=============== Script [TM] ===============",
         "{emoji_clock} *Время в игре:* " .. format_game_time(session_stats.time_in_game or 0)
     }
 
@@ -632,12 +702,15 @@ local function get_session_report_text(date_str)
 
     if biz_val > 0 then table.insert(lines, "  > {emoji_biz} *Прибыль с бизнеса:* $" .. formatNumber(biz_val)) end
     if btc_val > 0 then table.insert(lines, "  > {emoji_coin} *Продажа BTC:* $" .. formatNumber(btc_val)) end
+    if deal_val > 0 then
+        table.insert(lines, "  > {emoji_money} *Доход от продаж (обмен):* $" .. formatNumber(deal_val))
+    end
 
     table.insert(lines, "  > {emoji_fly} *ИТОГО ЗАРАБОТАНО:* $" .. formatNumber(total_val))
     if (session_stats.az_accumulated or 0) > 0 then
         table.insert(lines, "  > {emoji_coin} *Заработано AZ-Coins:* " .. formatNumber(session_stats.az_accumulated or 0) .. " AZ")
     end
-    table.insert(lines, "================ Script [TM] ================")
+    table.insert(lines, "===================================")
 
     return table.concat(lines, "\n")
 end
@@ -646,7 +719,7 @@ local function get_week_report_text()
     local stats = getWeekStatistics(os.time())
     local lines = {
         "{emoji_money} *ЕЖЕНЕДЕЛЬНЫЙ ОТЧЁТ (Пн — Вс)*",
-        "====================================",
+        "=============== Script [TM] ===============",
         "{emoji_money} *Общий доход за неделю:* $" .. formatNumber(stats.total),
         "{emoji_chart} Отслежено активных дней: " .. tostring(stats.days)
     }
@@ -655,7 +728,7 @@ local function get_week_report_text()
         table.insert(lines, "{emoji_crown} *Самый прибыльный день:* " .. tostring(stats.max_date) .. " ($" .. formatNumber(stats.max_income) .. ")")
     end
 
-    table.insert(lines, "================ Script [TM] ================")
+    table.insert(lines, "===================================")
     return table.concat(lines, "\n")
 end
 
@@ -663,7 +736,7 @@ local function get_month_report_text()
     local stats = getMonthStatistics(os.time())
     local lines = {
         "{emoji_bag} *ЕЖЕМЕСЯЧНЫЙ ОТЧЁТ (" .. os.date("%m.%Y") .. ")*",
-        "====================================",
+        "=============== Script [TM] ===============",
         "{emoji_money} *Общий доход за месяц:* $" .. formatNumber(stats.total),
         "{emoji_chart} Отслежено активных дней: " .. tostring(stats.days)
     }
@@ -672,7 +745,7 @@ local function get_month_report_text()
         table.insert(lines, "{emoji_crown} *Рекордный день месяца:* " .. tostring(stats.max_date) .. " ($" .. formatNumber(stats.max_income) .. ")")
     end
 
-    table.insert(lines, "================ Script [TM] ================")
+    table.insert(lines, "===================================")
     return table.concat(lines, "\n")
 end
 
@@ -684,10 +757,10 @@ local function get_max_income_report_text()
     
     local lines = {
         "{emoji_crown} *РЕКОРДНЫЙ ДЕНЬ ПО ЗАРАБОТКУ*",
-        "====================================",
+        "=============== Script [TM] ===============",
         "{emoji_star} *Дата рекорда:* " .. tostring(max_dt),
         "{emoji_dollar} *Максимальная сумма за день:* $" .. formatNumber(max_inc),
-        "================ Script [TM] ================"
+        "==================================="
     }
     return table.concat(lines, "\n")
 end
@@ -709,12 +782,15 @@ local function load_stats_from_file()
                 session_stats.manually_added_money = session_stats.manually_added_money or 0
                 session_stats.manually_added_az = session_stats.manually_added_az or 0
                 session_stats.trade_income = session_stats.trade_income or 0
+                session_stats.deal_income = session_stats.deal_income or 0
                 session_stats.expenses_accumulated = math.abs(tonumber(session_stats.expenses_accumulated or 0))
+
                 session_stats.goal_amount = session_stats.goal_amount or 10000000000
                 session_stats.goal_type = session_stats.goal_type or 1
                 session_stats.goal_scope = session_stats.goal_scope or 1
                 session_stats.goal_notified = session_stats.goal_notified or false
                 session_stats.goal_configured = session_stats.goal_configured or false
+                session_stats.goal_enabled = (session_stats.goal_enabled == nil) and true or session_stats.goal_enabled
                 session_stats.goal_start_from_zero = session_stats.goal_start_from_zero or false
                 session_stats.goal_start_money = session_stats.goal_start_money or 0
                 session_stats.goal_start_az = session_stats.goal_start_az or 0
@@ -729,6 +805,7 @@ local function load_stats_from_file()
                     session_stats.btc_income = 0
                     session_stats.az_accumulated = 0
                     session_stats.trade_income = 0
+                    session_stats.deal_income = 0
                     session_stats.expenses_accumulated = 0
                     session_stats.report_sent = false
                 end
@@ -745,7 +822,9 @@ local function load_stats_from_file()
     session_stats.btc_income = session_stats.btc_income or 0
     session_stats.az_accumulated = session_stats.az_accumulated or 0
     session_stats.trade_income = session_stats.trade_income or 0
+    session_stats.deal_income = session_stats.deal_income or 0
     session_stats.expenses_accumulated = math.abs(tonumber(session_stats.expenses_accumulated or 0))
+
     session_stats.report_sent = session_stats.report_sent or false
     session_stats.manually_added_money = session_stats.manually_added_money or 0
     session_stats.manually_added_az = session_stats.manually_added_az or 0
@@ -754,6 +833,7 @@ local function load_stats_from_file()
     session_stats.goal_scope = session_stats.goal_scope or 1
     session_stats.goal_notified = session_stats.goal_notified or false
     session_stats.goal_configured = session_stats.goal_configured or false
+    session_stats.goal_enabled = (session_stats.goal_enabled == nil) and true or session_stats.goal_enabled
     session_stats.goal_start_from_zero = session_stats.goal_start_from_zero or false
     session_stats.goal_start_money = session_stats.goal_start_money or 0
     session_stats.goal_start_az = session_stats.goal_start_az or 0
@@ -818,7 +898,7 @@ if cfg.config.autoWeeklyReport == nil then cfg.config.autoWeeklyReport = true en
 if cfg.config.autoMonthlyReport == nil then cfg.config.autoMonthlyReport = true end
 if cfg.config.autoMaxIncomeReport == nil then cfg.config.autoMaxIncomeReport = true end
 
-local ui = {
+ui = {
     window = imgui.new.bool(false),
     currentTab = imgui.new.int(1),
     show_update_popup = imgui.new.bool(false),
@@ -858,35 +938,33 @@ local ui = {
     autoMaxIncomeReport = imgui.new.bool(cfg.config.autoMaxIncomeReport)
 }
 
+chat = imgui.new.char[128](tostring(cfg.config.chat))
+token = imgui.new.char[128](tostring(cfg.config.token))
+useAntiBlock = imgui.new.bool(cfg.config.useAntiBlock or true)
 
+itemAdding = imgui.new.bool(cfg.config.itemAdding or false)
+sendUnknownItems = imgui.new.bool(cfg.config.sendUnknownItems or false)
+shortMessage = imgui.new.bool(cfg.config.shortMessage or false)
+payday = imgui.new.bool(cfg.config.payday or false)
+storage = imgui.new.bool(cfg.config.storage or false)
+spawnSelect = imgui.new.bool(cfg.config.spawnSelect or false)
+quest = imgui.new.bool(cfg.config.quest or false)
+enableUINotifications = imgui.new.bool(cfg.config.enableUINotifications or false)
 
-local chat = imgui.new.char[128](tostring(cfg.config.chat))
-local token = imgui.new.char[128](tostring(cfg.config.token))
-local useAntiBlock = imgui.new.bool(cfg.config.useAntiBlock or true)
+autoDailyReport = imgui.new.bool(cfg.config.autoDailyReport)
+autoWeeklyReport = imgui.new.bool(cfg.config.autoWeeklyReport)
+autoMonthlyReport = imgui.new.bool(cfg.config.autoMonthlyReport)
+autoMaxIncomeReport = imgui.new.bool(cfg.config.autoMaxIncomeReport)
 
-local itemAdding = imgui.new.bool(cfg.config.itemAdding or false)
-local sendUnknownItems = imgui.new.bool(cfg.config.sendUnknownItems or false)
-local shortMessage = imgui.new.bool(cfg.config.shortMessage or false)
-local payday = imgui.new.bool(cfg.config.payday or false)
-local storage = imgui.new.bool(cfg.config.storage or false)
-local spawnSelect = imgui.new.bool(cfg.config.spawnSelect or false)
-local quest = imgui.new.bool(cfg.config.quest or false)
-local enableUINotifications = imgui.new.bool(cfg.config.enableUINotifications or false)
+getPayday = false
+listPayday = {}
+paydayTimeout = 0
 
-local autoDailyReport = imgui.new.bool(cfg.config.autoDailyReport)
-local autoWeeklyReport = imgui.new.bool(cfg.config.autoWeeklyReport)
-local autoMonthlyReport = imgui.new.bool(cfg.config.autoMonthlyReport)
-local autoMaxIncomeReport = imgui.new.bool(cfg.config.autoMaxIncomeReport)
+window = imgui.new.bool(false)
+currentTab = imgui.new.int(1)
 
-local getPayday = false
-local listPayday = {}
-local paydayTimeout = 0
-
-local window = imgui.new.bool(false)
-local currentTab = imgui.new.int(1)
-
-local show_emoji_selector_modal = imgui.new.bool(false)
-local selected_emoji_setting = ""
+show_emoji_selector_modal = imgui.new.bool(false)
+selected_emoji_setting = ""
 
 -- === ТЕЛЕГРАМ ПОТОК ===
 local effilTelegramSendMessage = effil_ok and effil.thread(function(text, chatID, token, baseUrl)
@@ -929,7 +1007,7 @@ end
 
 local function checkGoalCompletion()
     local target = tonumber(session_stats.goal_amount) or 0
-    if target <= 0 or not session_stats.goal_configured then return end
+    if target <= 0 or not session_stats.goal_configured or not session_stats.goal_enabled then return end
 
     local current = 0
     local unit = "$"
@@ -942,7 +1020,7 @@ local function checkGoalCompletion()
             end
             current = math.max(0, base) + (session_stats.manually_added_money or 0)
         else
-            local total_earned_today = (session_stats.wages_accumulated or 0) + (session_stats.dep_growth or 0) + (session_stats.biz_income or 0) + (session_stats.btc_income or 0) + (session_stats.trade_income or 0)
+            local total_earned_today = (session_stats.wages_accumulated or 0) + (session_stats.dep_growth or 0) + (session_stats.biz_income or 0) + (session_stats.btc_income or 0) + (session_stats.trade_income or 0) + (session_stats.deal_income or 0)
             local net_total = total_earned_today - math.abs(tonumber(session_stats.expenses_accumulated) or 0)
             current = net_total + (session_stats.manually_added_money or 0)
         end
@@ -968,11 +1046,11 @@ local function checkGoalCompletion()
         
         local goal_text = string.format(
             "{emoji_crown} *ФИНАНСОВАЯ ЦЕЛЬ УСПЕШНО ДОСТИГНУТА!* {emoji_trophy}\n" ..
-            "====================================\n" ..
+            "=============== Script [TM] ===============\n" ..
             "{emoji_star} *Заданная цель:* %s %s\n" ..
             "{emoji_bag} *Накопленный результат:* %s %s\n" ..
             "{emoji_rocket} *Прогресс:* 100%%\n" ..
-            "================ Script [TM] ================",
+            "=====================================",
             formatNumber(target), unit, formatNumber(current), unit
         )
         sendTelegramMessage(goal_text)
@@ -1066,7 +1144,6 @@ function main()
         end
     end)
 
-
     checkUpdate()
 
     lua_thread.create(function()
@@ -1117,6 +1194,9 @@ function main()
                 session_stats.biz_income = 0
                 session_stats.btc_income = 0
                 session_stats.az_accumulated = 0
+                session_stats.trade_income = 0
+                session_stats.deal_income = 0
+                session_stats.expenses_accumulated = 0
                 session_stats.time_in_game = 0
                 session_stats.report_sent = false
 
@@ -1199,11 +1279,12 @@ end
 
 imgui.OnFrame(function() return window[0] or show_update_popup[0] or show_emoji_selector_modal[0] or show_chart_window[0] or show_goal_settings[0] or show_add_funds_modal[0] end, function(player)
     local resX, resY = getScreenResolution()
+ 
+if window[0] then
+    local sizeX, sizeY = 700, 500 -- Оставил компактный размер
+    imgui.SetNextWindowPos(imgui.ImVec2(resX / 2, resY / 2), imgui.Cond.Always, imgui.ImVec2(0.5, 0.5))
+    imgui.SetNextWindowSize(imgui.ImVec2(sizeX, sizeY), imgui.Cond.Always)
 
-    if window[0] then
-        local sizeX, sizeY = 700, 450 
-        imgui.SetNextWindowPos(imgui.ImVec2(resX / 2, resY / 2), imgui.Cond.FirstUseEver, imgui.ImVec2(0.5, 0.5))
-        imgui.SetNextWindowSize(imgui.ImVec2(sizeX, sizeY), imgui.Cond.Always)
         imgui.Begin('##MainSettings', window, imgui.WindowFlags.NoTitleBar + imgui.WindowFlags.NoResize + imgui.WindowFlags.NoCollapse + imgui.WindowFlags.NoScrollbar)
         
         -- === ЛЕВАЯ ВЕРТИКАЛЬНАЯ ПАНЕЛЬ НАВИГАЦИИ ===
@@ -1265,7 +1346,6 @@ imgui.OnFrame(function() return window[0] or show_update_popup[0] or show_emoji_
 			imgui.Dummy(imgui.ImVec2(0, 5))
             drawSidebarTab(5, "BAN", "Игнор предметов")
 
-
             imgui.SetCursorPosY(sizeY - 80)
             imgui.Separator()
             imgui.SetCursorPosY(sizeY - 65)
@@ -1309,52 +1389,128 @@ imgui.OnFrame(function() return window[0] or show_update_popup[0] or show_emoji_
                 if imgui.Button(u8('Проверить обновления'), imgui.ImVec2(-1, 30)) then
                     checkUpdate()
                 end
-if imgui.Button(u8('Обновить Список предметов'), imgui.ImVec2(-1, 30)) then
-    updateFilesAsync()
-end
+                if imgui.Button(u8('Обновить Список предметов'), imgui.ImVec2(-1, 30)) then
+                    updateFilesAsync()
+                end
 
-
-            elseif currentTab[0] == 2 then
+                             elseif currentTab[0] == 2 then
                 imgui.TextColored(imgui.ImVec4(0.95, 0.76, 0.18, 1.00), getIcon("BELL", "") .. u8("Управление уведомлениями и авто-отчётами"))
                 imgui.Separator()
                 imgui.Dummy(imgui.ImVec2(0, 5))
 
-                imgui.BeginChild("##notif_col_left", imgui.ImVec2(230, sizeY - 80), false)
-                    imgui.TextColored(imgui.ImVec4(0.18, 0.80, 0.44, 1.00), getIcon("BELL", "") .. u8("— Оповещения в чат —"))
+                local col_h = 240
+
+                -- Инициализируем переменную для текста предпросмотра, если её нет
+                if not preview_hover_text then preview_hover_text = "" end
+
+                -- ЛЕВАЯ КОЛОНКА
+                imgui.BeginChild("##notif_col_left", imgui.ImVec2(235, col_h), false)
+                    imgui.TextColored(imgui.ImVec4(0.18, 0.80, 0.44, 1.00), u8("— Оповещения —"))
                     imgui.Dummy(imgui.ImVec2(0, 5))
+                    
                     if imgui.Checkbox(u8('Визуальные UI уведомления'), enableUINotifications) then saveConfig() end
+                    if imgui.IsItemHovered() then
+                        preview_hover_text = "Показывать всплывающие уведомления в интерфейсе игры (снизу в центре)."
+                    end
                     imgui.Separator()
+
+                    -- Оповещение о предметах
                     if imgui.Checkbox(u8('Оповещение о предметах'), itemAdding) then saveConfig() end
+                    if imgui.IsItemHovered() then
+                        local tag = getEmojiForDisplay("itemEmoji")
+                        if shortMessage[0] then
+                            preview_hover_text = "Вам был добавлен предмет 'Платиновая рулетка', используйте клавишу 'Y' или /invent"
+                        else
+                            preview_hover_text = tag .. "Вам был добавлен предмет Платиновая рулетка"
+                        end
+                    end
+
                     if itemAdding[0] then
                         imgui.Indent(15)
                         if imgui.Checkbox(u8('Отправлять неизвестные'), sendUnknownItems) then saveConfig() end
+                        if imgui.IsItemHovered() then preview_hover_text = "Отправлять сообщения даже если предметов, нет в базе скрипта (покажет ID)." end
+                        
                         if imgui.Checkbox(u8('Старый вид сообщений'), shortMessage) then saveConfig() end
+                        if imgui.IsItemHovered() then preview_hover_text = "Вам был добавлен предмет 'Платиновая рулетка', используйте клавишу 'Y' или /invent." end
                         imgui.Unindent(15)
                     end
+                    
+                    -- PayDay Чек
                     if imgui.Checkbox(u8('PayDay Чек'), payday) then saveConfig() end
+                    if imgui.IsItemHovered() then
+                        local h = getEmojiForDisplay("paydayHeaderEmoji")
+                        local b = getEmojiForDisplay("paydayBankEmoji")
+                        local d = getEmojiForDisplay("paydayDepositEmoji")
+                        local w = getEmojiForDisplay("paydayWageEmoji")
+                        local a = getEmojiForDisplay("paydayAZEmoji")
+                        preview_hover_text = string.format("%sPayDay | БАНКОВСКИЙ ЧЕК%s\n==================================\n| Текущая сумма в банке: %s2.177.123 (+%s1.430.313)\n| В данный момент у вас 244-й уровень\n| Текущая сумма на депозите: %s554.622.304 (+%s1.434.264)\n| Общая заработная плата: %s1.430.313\n| Баланс на донат-счет: %s97.714 (+%s14)\n==================================", h, h, b, b, d, d, w, a, a)
+                    end
+
+                    -- Хранилище предметов
                     if imgui.Checkbox(u8('Хранилище предметов'), storage) then saveConfig() end
+                    if imgui.IsItemHovered() then
+                        preview_hover_text = getEmojiForDisplay("storageEmoji") .. "Вам добавлен новый предмет 'Платиновая рулетка' в хранилище! /storage"
+                    end
+
+                    -- Квесты и Задания
                     if imgui.Checkbox(u8('Квесты и Задания'), quest) then saveConfig() end
+                    if imgui.IsItemHovered() then
+                        preview_hover_text = getEmojiForDisplay("questEmoji") .. "[Боевой Пропуск]\nВыполнил задание: 'Тестовое Задание'"
+                    end
+
+                    -- Выбор места спавна
                     if imgui.Checkbox(u8('Выбор места спавна'), spawnSelect) then saveConfig() end
+                    if imgui.IsItemHovered() then
+                        preview_hover_text = getEmojiForDisplay("spawnEmoji") .. "Вы выбрали местом спавна: Дом #394"
+                    end
+
                 imgui.EndChild()
 
                 imgui.SameLine()
 
+                -- ЗОЛОТАЯ ЛИНИЯ
                 local line_pos = imgui.GetCursorScreenPos()
                 local d_list = imgui.GetWindowDrawList()
-                local stroke_color = imgui.GetColorU32Vec4(imgui.ImVec4(0.95, 0.76, 0.18, 0.80))
-                d_list:AddRectFilled(imgui.ImVec2(line_pos.x + 2, line_pos.y), imgui.ImVec2(line_pos.x + 6, line_pos.y + sizeY - 90), stroke_color)
+                d_list:AddRectFilled(imgui.ImVec2(line_pos.x + 2, line_pos.y), imgui.ImVec2(line_pos.x + 4, line_pos.y + col_h), imgui.GetColorU32Vec4(imgui.ImVec4(0.95, 0.76, 0.18, 0.60)))
                 imgui.Dummy(imgui.ImVec2(10, 0))
 
                 imgui.SameLine()
 
-                imgui.BeginChild("##notif_col_right", imgui.ImVec2(220, sizeY - 80), false)
-                    imgui.TextColored(imgui.ImVec4(0.95, 0.76, 0.18, 1.00), getIcon("PAPER_PLANE", "") .. u8("— Авто-отчётность —"))
+                -- ПРАВАЯ КОЛОНКА (Авто-отчёты)
+                imgui.BeginChild("##notif_col_right", imgui.ImVec2(220, col_h), false)
+                    imgui.TextColored(imgui.ImVec4(0.95, 0.76, 0.18, 1.00), u8("— Авто-отчёты —"))
                     imgui.Dummy(imgui.ImVec2(0, 5))
+                    
                     if imgui.Checkbox(u8('Ежедневный отчёт в 00:00'), autoDailyReport) then saveConfig() end
+                    if imgui.IsItemHovered() then preview_hover_text = get_session_report_text("01.08.2026") end
+
                     if imgui.Checkbox(u8('Недельный отчёт (Пн-Вс)'), autoWeeklyReport) then saveConfig() end
+                    if imgui.IsItemHovered() then preview_hover_text = get_week_report_text() end
+
                     if imgui.Checkbox(u8('Месячный отчёт'), autoMonthlyReport) then saveConfig() end
+                    if imgui.IsItemHovered() then preview_hover_text = get_month_report_text() end
+
                     if imgui.Checkbox(u8('Отчёт о рекорде дохода'), autoMaxIncomeReport) then saveConfig() end
+                    if imgui.IsItemHovered() then preview_hover_text = get_max_income_report_text() end
                 imgui.EndChild()
+
+                -- НИЖНЕЕ ОКНО ПРЕДПРОСМОТРА (Увеличенной высоты, чтобы влазил весь PayDay)
+                imgui.Separator()
+                imgui.Dummy(imgui.ImVec2(0, 2))
+                imgui.TextColored(imgui.ImVec4(0.6, 0.6, 0.6, 1.0), getIcon("EYE", "") .. u8("Предпросмотр сообщения (наведите на любой пункт выше):"))
+                
+                imgui.PushStyleColor(imgui.Col.ChildBg, imgui.ImVec4(0.06, 0.08, 0.11, 1.00))
+                imgui.BeginChild("##preview_msg", imgui.ImVec2(-1, 140), true) -- Сделал окно повыше
+                    -- Если мышкой никуда не навели, показываем дефолтный пример предмета
+                    if preview_hover_text == "" then
+                        local tag = getEmojiForDisplay("itemEmoji")
+                        preview_hover_text = tag .. "Вам был добавлен предмет Сертификат Платиновая рулетка "
+                    end
+                    imgui.TextWrapped(u8(preview_hover_text))
+                imgui.EndChild()
+                imgui.PopStyleColor()
+            
+            
 
             elseif currentTab[0] == 3 then
                 imgui.TextColored(imgui.ImVec4(0.95, 0.76, 0.18, 1.00), getIcon("SLIDERS", "") .. u8("Настройка шаблонов и смайликов"))
@@ -1423,22 +1579,28 @@ end
             elseif currentTab[0] == 4 then -- ВКЛАДКА СТАТИСТИКА
                 imgui.TextColored(imgui.ImVec4(0.95, 0.76, 0.18, 1.00), getIcon("CHART_LINE", "") .. u8("Ежедневный Финансовый Журнал"))
                 
+                -- === УМНАЯ ИКОНКА ПРОГНОЗА С НАВЕДЕНИЕМ И ЗАКРЕПЛЕНИЕМ ===
                 imgui.SameLine(sizeX - 250)
                 local q_icon = (font_loaded and fa_ok and fa and fa.CIRCLE_QUESTION) and fa.CIRCLE_QUESTION or "?"
-                imgui.PushStyleColor(imgui.Col.Button, imgui.ImVec4(0.95, 0.76, 0.18, 0.2))
+                imgui.PushStyleColor(imgui.Col.Button, show_projection_pinned[0] and imgui.ImVec4(0.95, 0.76, 0.18, 0.5) or imgui.ImVec4(0.95, 0.76, 0.18, 0.2))
                 imgui.PushStyleColor(imgui.Col.ButtonHovered, imgui.ImVec4(0.95, 0.76, 0.18, 0.4))
                 if imgui.Button(q_icon .. "##projection_btn", imgui.ImVec2(28, 24)) then
+                    show_projection_pinned[0] = not show_projection_pinned[0]
                     imgui.OpenPopup("ProjectionPopup")
                 end
-                if imgui.IsItemHovered() then
+                
+                local btn_hovered = imgui.IsItemHovered()
+                if btn_hovered then
+                    imgui.OpenPopup("ProjectionPopup")
                     imgui.BeginTooltip()
-                    imgui.Text(u8("Прогноз прибыли"))
+                    imgui.Text(u8(show_projection_pinned[0] and "Прогноз прибыли (закреплен)" or "Прогноз прибыли (наведите для показа, нажмите для закрепления)"))
                     imgui.EndTooltip()
                 end
                 imgui.PopStyleColor(2)
                 
-                imgui.SetNextWindowSize(imgui.ImVec2(380, 420), imgui.Cond.Always)
+                imgui.SetNextWindowSize(imgui.ImVec2(380, 460), imgui.Cond.Always)
                 if imgui.BeginPopup("ProjectionPopup") then
+                    local is_pop_hovered = imgui.IsWindowHovered()
                     imgui.TextColored(imgui.ImVec4(0.95, 0.76, 0.18, 1.00), getIcon("CHART_LINE", "") .. u8("Прогноз прибыли (при непрерывной игре)"))
                     imgui.Separator()
                     imgui.Dummy(imgui.ImVec2(0, 3))
@@ -1469,6 +1631,20 @@ end
                     drawProjectionCard("За 24 часа:", "CALENDAR_DAYS", 48)
                     drawProjectionCard("За месяц:", "CALENDAR_DAYS", 1440)
                     
+                    if show_projection_pinned[0] then
+                        imgui.PushStyleColor(imgui.Col.Button, imgui.ImVec4(0.80, 0.20, 0.20, 0.6))
+                        imgui.PushStyleColor(imgui.Col.ButtonHovered, imgui.ImVec4(0.90, 0.30, 0.30, 0.8))
+                        if imgui.Button(u8("Открепить прогноз"), imgui.ImVec2(-1, 24)) then
+                            show_projection_pinned[0] = false
+                            imgui.CloseCurrentPopup()
+                        end
+                        imgui.PopStyleColor(2)
+                    end
+
+                    -- Авто-закрытие если мышка ушла с кнопки и самого окна прогноза (если не закреплен)
+                    if not btn_hovered and not is_pop_hovered and not show_projection_pinned[0] then
+                        imgui.CloseCurrentPopup()
+                    end
                     imgui.EndPopup()
                 end
 
@@ -1494,20 +1670,22 @@ end
                 local biz_val = session_stats.biz_income or 0
                 local btc_val = session_stats.btc_income or 0
                 local trade_val = session_stats.trade_income or 0
+                local deal_val = session_stats.deal_income or 0
                 local expenses_val = math.abs(tonumber(session_stats.expenses_accumulated) or 0)
                 local az_val = session_stats.az_accumulated or 0
                 
-                local total_earned = wage_val + dep_val + biz_val + btc_val + trade_val
+                local total_earned = wage_val + dep_val + biz_val + btc_val + trade_val + deal_val
                 local net_total = total_earned - expenses_val
 
                 local rows_count = 3
                 if biz_val > 0 then rows_count = rows_count + 1 end
                 if btc_val > 0 then rows_count = rows_count + 1 end
                 if trade_val > 0 then rows_count = rows_count + 1 end
+                if deal_val > 0 then rows_count = rows_count + 1 end
                 if expenses_val > 0 then rows_count = rows_count + 1 end
                 if az_val > 0 then rows_count = rows_count + 1 end
 
-                local card_height = 16 + (rows_count * 20) + 15
+                local card_height = 5 + (rows_count * 20) + 0
 
                 imgui.BeginChild("##finance_card", imgui.ImVec2(0, card_height), true)
                     local function drawStatRow(icon_name, label, value, val_color)
@@ -1521,7 +1699,8 @@ end
                     if biz_val > 0 then drawStatRow("BRIEFCASE", "Прибыль с бизнеса:", "$" .. formatNumber(biz_val), imgui.ImVec4(0.25, 0.85, 0.48, 1.00)) end
                     if btc_val > 0 then drawStatRow("COINS", "Продажа BTC:", "$" .. formatNumber(btc_val), imgui.ImVec4(0.25, 0.85, 0.48, 1.00)) end
                     if trade_val > 0 then drawStatRow("CART_SHOPPING", "Продажа товаров:", "$" .. formatNumber(trade_val), imgui.ImVec4(0.25, 0.85, 0.48, 1.00)) end
-                    
+                    if deal_val > 0 then drawStatRow("HANDSHAKE", "Доход от трейда:", "$" .. formatNumber(deal_val), imgui.ImVec4(0.25, 0.85, 0.48, 1.00)) end
+
                     if expenses_val > 0 then 
                         drawStatRow("TRASH", "Траты за сегодня:", "-$" .. formatNumber(expenses_val), imgui.ImVec4(0.95, 0.26, 0.26, 1.00)) 
                     end
@@ -1538,113 +1717,144 @@ end
                 imgui.Separator()
             
                 -- === КАРТОЧКА ТРЕКЕРА ФИНАНСОВОЙ ЦЕЛИ ===
-                imgui.TextColored(imgui.ImVec4(0.95, 0.76, 0.18, 1.00), getIcon("BULLSEYE", "") .. u8("Трекер финансовой цели:"))
-                imgui.SameLine(sizeX - 265)
-
-                imgui.PushStyleColor(imgui.Col.Button, imgui.ImVec4(0.95, 0.26, 0.26, 0.25))
-                imgui.PushStyleColor(imgui.Col.ButtonHovered, imgui.ImVec4(0.95, 0.35, 0.35, 0.50))
-                if imgui.Button(getIcon("GEAR", "?") .. "##goal_settings_btn", imgui.ImVec2(32, 24)) then
-                    ffi.copy(goal_edit_amount, tostring(session_stats.goal_amount))
-                    goal_edit_type[0] = session_stats.goal_type
-                    goal_edit_scope[0] = session_stats.goal_scope
-                    goal_edit_start_zero[0] = session_stats.goal_start_from_zero
-                    show_goal_settings[0] = true
+                local target_icon = (font_loaded and fa_ok and fa and fa.BULLSEYE) and fa.BULLSEYE or "?"
+                imgui.PushStyleColor(imgui.Col.Button, imgui.ImVec4(0, 0, 0, 0))
+                imgui.PushStyleColor(imgui.Col.ButtonHovered, imgui.ImVec4(1, 1, 1, 0.08))
+                imgui.PushStyleColor(imgui.Col.ButtonActive, imgui.ImVec4(1, 1, 1, 0.15))
+                local active_icon_col = session_stats.goal_enabled and imgui.ImVec4(0.95, 0.76, 0.18, 1.00) or imgui.ImVec4(0.50, 0.55, 0.63, 1.00)
+                imgui.PushStyleColor(imgui.Col.Text, active_icon_col)
+                if imgui.Button(target_icon .. "##toggle_goal_collapse", imgui.ImVec2(24, 24)) then
+                    session_stats.goal_enabled = not session_stats.goal_enabled
+                    save_stats_to_file()
                 end
-                imgui.PopStyleColor(2)
+                imgui.PopStyleColor(4)
+                if imgui.IsItemHovered() then
+                    imgui.BeginTooltip()
+                    imgui.Text(u8(session_stats.goal_enabled and "Свернуть трекер цели" or "Развернуть трекер цели"))
+                    imgui.EndTooltip()
+                end
+                imgui.SameLine()
+                
+                imgui.TextColored(imgui.ImVec4(0.95, 0.76, 0.18, 1.00), u8("Трекер финансовой цели:"))
 
-                imgui.BeginChild("##goal_tracker_card", imgui.ImVec2(0, 105), true)
-                    local target = tonumber(session_stats.goal_amount) or 1
-                    local cur = 0
-                    local sym = "$"
-                    if session_stats.goal_type == 1 then
-                        if session_stats.goal_scope == 1 then
-                            local base = getTotalIncomeOverall()
-                            if session_stats.goal_start_from_zero then
-                                base = base - (session_stats.goal_start_money or 0)
-                            end
-                            cur = math.max(0, base) + (session_stats.manually_added_money or 0)
-                        else
-                            local total_earned_today_local = (session_stats.wages_accumulated or 0) + (session_stats.dep_growth or 0) + (session_stats.biz_income or 0) + (session_stats.btc_income or 0) + (session_stats.trade_income or 0)
-                            local net_total_local = total_earned_today_local - math.abs(tonumber(session_stats.expenses_accumulated) or 0)
-                            cur = net_total_local + (session_stats.manually_added_money or 0)
-                        end
-                        sym = "$"
-                    else
-                        if session_stats.goal_scope == 1 then
-                            local base = getTotalAZOverall()
-                            if session_stats.goal_start_from_zero then
-                                base = base - (session_stats.goal_start_az or 0)
-                            end
-                            cur = math.max(0, base) + (session_stats.manually_added_az or 0)
-                        else
-                            cur = (session_stats.az_accumulated or 0) + (session_stats.manually_added_az or 0)
-                        end
-                        sym = "AZ"
-                    end
-                    
-                    local progress = math.min(1.0, math.max(0.0, cur / target))
-                    local remaining = math.max(0, target - cur)
-                    
-                    imgui.PushStyleColor(imgui.Col.Button, imgui.ImVec4(0.18, 0.80, 0.44, 0.25))
-                    imgui.PushStyleColor(imgui.Col.ButtonHovered, imgui.ImVec4(0.18, 0.80, 0.44, 0.45))
-                    if imgui.Button("+##add_funds_button", imgui.ImVec2(25, 20)) then
-                        show_add_funds_modal[0] = true
-                    end
-                    if imgui.IsItemHovered() then
-                        imgui.BeginTooltip()
-                        imgui.Text(u8("Прибавить ранее заработанные средства"))
-                        imgui.EndTooltip()
+                if session_stats.goal_enabled then
+                    imgui.SameLine(sizeX - 265)
+
+                    imgui.PushStyleColor(imgui.Col.Button, imgui.ImVec4(0.95, 0.26, 0.26, 0.25))
+                    imgui.PushStyleColor(imgui.Col.ButtonHovered, imgui.ImVec4(0.95, 0.35, 0.35, 0.50))
+                    if imgui.Button(getIcon("GEAR", "?") .. "##goal_settings_btn", imgui.ImVec2(32, 24)) then
+                        ffi.copy(goal_edit_amount, tostring(session_stats.goal_amount))
+                        goal_edit_type[0] = session_stats.goal_type
+                        goal_edit_scope[0] = session_stats.goal_scope
+                        goal_edit_start_zero[0] = session_stats.goal_start_from_zero
+                        show_goal_settings[0] = true
                     end
                     imgui.PopStyleColor(2)
-                    imgui.SameLine()
 
-                    imgui.ProgressBar(progress, imgui.ImVec2(-1, 20), string.format("%.1f%%", progress * 100))
-                    
-                    imgui.Text(u8("Осталось: ") .. formatNumber(remaining) .. " " .. sym)
-                    
-                    local week_stats = getWeekStatistics()
-                    local avg_daily_income = 0
-                    if session_stats.goal_type == 1 then
-                        if session_stats.goal_scope == 1 then
-                           avg_daily_income = (week_stats.total > 0) and (week_stats.total / math.max(1, week_stats.days)) or getCurrentIncome()
+                    imgui.BeginChild("##goal_tracker_card", imgui.ImVec2(0, 60), true)
+                        local target = tonumber(session_stats.goal_amount) or 1
+                        local cur = 0
+                        local sym = "$"
+                        if session_stats.goal_type == 1 then
+                            if session_stats.goal_scope == 1 then
+                                local base = getTotalIncomeOverall()
+                                if session_stats.goal_start_from_zero then
+                                    base = base - (session_stats.goal_start_money or 0)
+                                end
+                                cur = math.max(0, base) + (session_stats.manually_added_money or 0)
+                            else
+                                local total_earned_today_local = (session_stats.wages_accumulated or 0) + (session_stats.dep_growth or 0) + (session_stats.biz_income or 0) + (session_stats.btc_income or 0) + (session_stats.trade_income or 0) + (session_stats.deal_income or 0)
+                                local net_total_local = total_earned_today_local - math.abs(tonumber(session_stats.expenses_accumulated) or 0)
+                                cur = net_total_local + (session_stats.manually_added_money or 0)
+                            end
+                            sym = "$"
                         else
-                           local total_earned_today_local = (session_stats.wages_accumulated or 0) + (session_stats.dep_growth or 0) + (session_stats.biz_income or 0) + (session_stats.btc_income or 0) + (session_stats.trade_income or 0)
-                           local net_total_local = total_earned_today_local - math.abs(tonumber(session_stats.expenses_accumulated) or 0)
-                           avg_daily_income = (net_total_local > 0) and net_total_local or 0 
+                            if session_stats.goal_scope == 1 then
+                                local base = getTotalAZOverall()
+                                if session_stats.goal_start_from_zero then
+                                    base = base - (session_stats.goal_start_az or 0)
+                                end
+                                cur = math.max(0, base) + (session_stats.manually_added_az or 0)
+                            else
+                                cur = (session_stats.az_accumulated or 0) + (session_stats.manually_added_az or 0)
+                            end
+                            sym = "AZ"
                         end
-                    else
-                        if session_stats.goal_scope == 1 then
-                           avg_daily_income = (getTotalAZOverall() / math.max(1, week_stats.days)) 
-                        else
-                           avg_daily_income = (session_stats.az_accumulated or 0)
+                        
+                        local progress = math.min(1.0, math.max(0.0, cur / target))
+                        local remaining = math.max(0, target - cur)
+                        
+                        imgui.PushStyleColor(imgui.Col.Button, imgui.ImVec4(0.18, 0.80, 0.44, 0.25))
+                        imgui.PushStyleColor(imgui.Col.ButtonHovered, imgui.ImVec4(0.18, 0.80, 0.44, 0.45))
+                        if imgui.Button("+##add_funds_button", imgui.ImVec2(25, 20)) then
+                            show_add_funds_modal[0] = true
                         end
-                    end
-                    
-                    if remaining > 0 and avg_daily_income > 0 then
-                        local days_needed = math.ceil(remaining / avg_daily_income)
-                        imgui.SameLine()
-                        imgui.TextColored(imgui.ImVec4(0.5, 0.5, 0.5, 1.0), u8(string.format(" (~ %d дн.)", days_needed)))
                         if imgui.IsItemHovered() then
                             imgui.BeginTooltip()
-                            imgui.Text(u8("Примерно дней до цели при среднем доходе за день: "))
-                            imgui.Text(u8(formatNumber(avg_daily_income) .. " " .. sym))
+                            imgui.Text(u8("Прибавить ранее заработанные средства"))
                             imgui.EndTooltip()
+                        end
+                        imgui.PopStyleColor(2)
+                        imgui.SameLine()
+
+                        imgui.ProgressBar(progress, imgui.ImVec2(-1, 20), string.format("%.1f%%", progress * 100))
+                        
+                        imgui.Text(u8("Осталось: ") .. formatNumber(remaining) .. " " .. sym)
+                        
+                        local week_stats = getWeekStatistics()
+						local avg_daily_income = 0
+                    local avg_daily_az = 0
+
+                    -- Рассчитываем средний доход/AZ за все записанные дни
+                    avg_daily_income = get_average_daily_value('income')
+                    avg_daily_az = get_average_daily_value('az_accumulated')
+                    
+                    if remaining > 0 then -- Проверяем, осталось ли что-то до цели
+                        local days_needed = 0
+                        local current_avg_value = 0
+                        
+                        if session_stats.goal_type == 1 then -- Цель в деньгах
+                            current_avg_value = avg_daily_income
+                        else -- Цель в AZ-Coins
+                            current_avg_value = avg_daily_az
+                        end
+
+                        if current_avg_value > 0 then
+                            days_needed = math.ceil(remaining / current_avg_value)
+                            imgui.SameLine()
+                            imgui.TextColored(imgui.ImVec4(0.5, 0.5, 0.5, 1.0), u8(string.format(" (~ %d дн.)", days_needed)))
+                            if imgui.IsItemHovered() then
+                                imgui.BeginTooltip()
+                                imgui.Text(u8("Примерно дней до цели при среднем доходе за день: "))
+                                imgui.Text(u8(formatNumber(current_avg_value) .. " " .. sym))
+                                imgui.EndTooltip()
+                            end
+                        else
+                             imgui.SameLine()
+                             imgui.TextColored(imgui.ImVec4(0.5, 0.5, 0.5, 1.0), u8(" (Нет данных для прогноза) "))
+                             if imgui.IsItemHovered() then
+                                imgui.BeginTooltip()
+                                imgui.Text(u8("Недостаточно данных для расчета среднего дохода."))
+                                imgui.Text(u8("Начните зарабатывать, и прогноз появится!"))
+                                imgui.EndTooltip()
+                            end
                         end
                     end
                 imgui.EndChild()
 
-                imgui.Separator()
-
-                if session_stats.goal_configured then
-                    imgui.PushStyleColor(imgui.Col.Button, imgui.ImVec4(0.18, 0.50, 0.80, 0.25))
-                    imgui.PushStyleColor(imgui.Col.ButtonHovered, imgui.ImVec4(0.18, 0.50, 0.80, 0.45))
-                    if imgui.Button(getIcon("CHART_COLUMN", "??") .. u8("Посмотреть график доходов"), imgui.ImVec2(-1, 26)) then
-                        show_chart_window[0] = true
-                    end
-                    imgui.PopStyleColor(2)
+                    imgui.Separator()
                 else
-                    imgui.TextDisabled(u8("? График доходов станет доступен после сохранения финансовой цели."))
+                    imgui.Dummy(imgui.ImVec2(0, 2)) -- Когда свернуто, показываем только компактный заголовок
                 end
+
+                -- === ГРАФИК ДОСТУПЕН СРАЗУ ===
+                imgui.PushStyleColor(imgui.Col.Button, imgui.ImVec4(0.18, 0.50, 0.80, 0.25))
+                imgui.PushStyleColor(imgui.Col.ButtonHovered, imgui.ImVec4(0.18, 0.50, 0.80, 0.45))
+
+                if imgui.Button(getIcon("CHART_COLUMN", "??") .. u8("Посмотреть график доходов"), imgui.ImVec2(-1, 26)) then
+                    show_chart_window[0] = true
+                end
+                imgui.PopStyleColor(2)
 
                 imgui.Dummy(imgui.ImVec2(0, 2))
 
@@ -1669,16 +1879,16 @@ end
                     session_stats.btc_income = 0
                     session_stats.az_accumulated = 0
                     session_stats.time_in_game = 0
+                    session_stats.trade_income = 0
+                    session_stats.deal_income = 0
+                    session_stats.expenses_accumulated = 0
                     session_stats.report_sent = false
                     save_stats_to_file()
                     show_arz_notify('info', 'Сброс', 'Статистика дня успешно обнулена.', 3000)
                 end
                 imgui.PopStyleColor(2)
 
-            -- Примерно строка 1060:
--- =======================================
--- ЗАМЕНИТЕ ВЕСЬ БЛОК currentTab[0] == 5 НА СЛЕДУЮЩИЙ:
-            elseif currentTab[0] == 5 then -- ВКЛАДКА ИГНОР ПРЕДМЕТОВ ПО НАЗВАНИЮ
+                            elseif currentTab[0] == 5 then -- ВКЛАДКА ИГНОР ПРЕДМЕТОВ
                 imgui.TextColored(imgui.ImVec4(0.95, 0.76, 0.18, 1.00), getIcon("BAN", "") .. u8("Черный список предметов"))
                 imgui.TextDisabled(u8("Предметы из этого списка НЕ будут отправляться в Telegram при получении."))
                 imgui.Separator()
@@ -1690,6 +1900,7 @@ end
 
                 imgui.Dummy(imgui.ImVec2(0, 5))
 
+                -- Считаем реальное количество добавленных в игнор предметов
                 local ignored_count = 0
                 for _ in pairs(session_stats.ignored_items or {}) do ignored_count = ignored_count + 1 end
                 imgui.TextColored(imgui.ImVec4(0.60, 0.65, 0.73, 1.00), u8("Всего предметов в игноре: ") .. tostring(ignored_count))
@@ -1699,78 +1910,86 @@ end
                 imgui.PushStyleColor(imgui.Col.ChildBg, imgui.ImVec4(0.06, 0.08, 0.11, 1.00))
                 imgui.BeginChild("##items_ignore_list", imgui.ImVec2(0, sizeY - 180), true)
 
-                -- Декодируем введенный текст из UTF-8 в CP1251 для корректного поиска по русскому названию
                 local raw_search = ffi.string(ui.item_search_input)
                 local ok_dec, search_cp1251 = pcall(function() return u8:decode(raw_search) end)
                 local search_query = (ok_dec and search_cp1251 or raw_search):lower()
-                local rendered_count = 0
+                
+                local all_items_to_display = {}
+                -- Собираем все предметы из базы и помечаем игнорируемые
+                for id_str, name_str in pairs(items_name or {}) do
+                    local name_lower = name_str:lower()
+                    local id_lower = id_str:lower()
 
-                for id_str, name in pairs(items_name or {}) do
-                    local item_name = tostring(name)
-                    local name_lower = item_name:lower()
-                    local id_lower = tostring(id_str):lower()
-
-                    -- Проверяем совпадение по названию предмета или его ID
+                    -- Применяем фильтр поиска
                     if search_query == "" or name_lower:find(search_query, 1, true) or id_lower:find(search_query, 1, true) then
-                        rendered_count = rendered_count + 1
-                        
-                        if search_query == "" and rendered_count > 150 then
-                            imgui.TextDisabled(u8("...Введите название предмета в поле выше для точного поиска..."))
-                            break
-                        end
-
-                        -- ПРОВЕРКА ИГНОРА ПО НАЗВАНИЮ ПРЕДМЕТА
-                        local is_ignored = session_stats.ignored_items[item_name] == true or session_stats.ignored_items[tostring(id_str)] == true
-
-                        imgui.PushIDInt(tonumber(id_str) or rendered_count)
-
-                        imgui.TextColored(imgui.ImVec4(0.50, 0.55, 0.63, 1.00), "[" .. tostring(id_str) .. "] ")
-                        imgui.SameLine()
-                        imgui.Text(u8(item_name))
-
-                        imgui.SameLine(330)
-
-                        if is_ignored then
-                            imgui.PushStyleColor(imgui.Col.Button, imgui.ImVec4(0.80, 0.20, 0.20, 0.6))
-                            imgui.PushStyleColor(imgui.Col.ButtonHovered, imgui.ImVec4(0.90, 0.30, 0.30, 0.8))
-                            if imgui.Button(u8("В игноре##btn"), imgui.ImVec2(110, 22)) then
-                                session_stats.ignored_items[item_name] = nil
-                                session_stats.ignored_items[tostring(id_str)] = nil
-                                save_stats_to_file()
-                            end
-                            imgui.PopStyleColor(2)
-                        else
-                            imgui.PushStyleColor(imgui.Col.Button, imgui.ImVec4(0.18, 0.20, 0.26, 0.6))
-                            imgui.PushStyleColor(imgui.Col.ButtonHovered, imgui.ImVec4(0.18, 0.80, 0.44, 0.6))
-                            if imgui.Button(u8("Игнорить##btn"), imgui.ImVec2(110, 22)) then
-                                session_stats.ignored_items[item_name] = true
-                                save_stats_to_file()
-                            end
-                            imgui.PopStyleColor(2)
-                        end
-
-                        imgui.PopID()
+                        local is_ignored = session_stats.ignored_items[id_str] ~= nil
+                        table.insert(all_items_to_display, {
+                            id = id_str,
+                            name = name_str,
+                            is_ignored = is_ignored
+                        })
                     end
                 end
 
+                -- Сортируем: сначала игнорируемые, затем по алфавиту
+                table.sort(all_items_to_display, function(a, b)
+                    if a.is_ignored ~= b.is_ignored then
+                        return a.is_ignored -- true (игнорируемые) идут первыми
+                    end
+                    return a.name < b.name -- затем по названию
+                end)
+
+                local rendered_count = 0
+                for _, item in ipairs(all_items_to_display) do
+                    rendered_count = rendered_count + 1
+                    imgui.PushIDInt(tonumber(item.id) or rendered_count)
+
+                    local text_color = item.is_ignored and imgui.ImVec4(0.95, 0.76, 0.18, 1.00) or imgui.ImVec4(0.88, 0.89, 0.92, 1.00)
+                    imgui.TextColored(text_color, "[" .. item.id .. "] ")
+                    imgui.SameLine()
+                    imgui.TextColored(text_color, u8(item.name))
+
+                    imgui.SameLine(330) -- Выравнивание кнопки
+
+                    if item.is_ignored then
+                        imgui.PushStyleColor(imgui.Col.Button, imgui.ImVec4(0.80, 0.20, 0.20, 0.6))
+                        imgui.PushStyleColor(imgui.Col.ButtonHovered, imgui.ImVec4(0.90, 0.30, 0.30, 0.8))
+                        if imgui.Button(u8("Удалить##btn"), imgui.ImVec2(110, 22)) then
+                            session_stats.ignored_items[item.id] = nil
+                            save_stats_to_file()
+                        end
+                        imgui.PopStyleColor(2)
+                    else
+                        imgui.PushStyleColor(imgui.Col.Button, imgui.ImVec4(0.18, 0.80, 0.44, 0.6))
+                        imgui.PushStyleColor(imgui.Col.ButtonHovered, imgui.ImVec4(0.24, 0.85, 0.48, 0.8))
+                        if imgui.Button(u8("Игнорировать##btn"), imgui.ImVec2(110, 22)) then
+                            session_stats.ignored_items[item.id] = true
+                            save_stats_to_file()
+                        end
+                        imgui.PopStyleColor(2)
+                    end
+
+                    imgui.PopID()
+                end
+
                 if rendered_count == 0 then
-                    imgui.TextDisabled(u8("Предмет с таким названием не найден."))
+                    imgui.TextDisabled(u8("Список предметов пуст или ничего не найдено по запросу."))
                 end 
 
                 imgui.EndChild()
                 imgui.PopStyleColor()
--- =======================================
-               
 
-            end -- <--- ЭТОТ "end" ДОЛЖЕН ЗАКРЫВАТЬ ВСЮ ЦЕПОЧКУ "if/elseif" ВКЛАДОК!
-            imgui.EndChild() -- Этот закрывает "##right_content"
+            end
+            imgui.EndChild()
 
-        imgui.End() -- Этот закрывает "##MainSettings"
-    end -- Этот закрывает "if ui.window[0] then"
+        imgui.End()
+    end
 
     -- === ДОПОЛНИТЕЛЬНОЕ ОКНО НАСТРОЕК ЦЕЛИ ===
     if show_goal_settings[0] then
         local gW, gH = 390, 320
+		-- Пример для любого модального окна внутри OnFrame:imgui.SetNextWindowPos(imgui.ImVec2(resX / 2, resY / 2), imgui.Cond.Always, imgui.ImVec2(0.5, 0.5))
+
         imgui.SetNextWindowPos(imgui.ImVec2(resX / 2, resY / 2), imgui.Cond.Always, imgui.ImVec2(0.5, 0.5))
         imgui.SetNextWindowSize(imgui.ImVec2(gW, gH), imgui.Cond.Always)
         imgui.PushStyleColor(imgui.Col.WindowBg, imgui.ImVec4(0.09, 0.11, 0.15, 0.98))
@@ -1819,6 +2038,7 @@ end
             imgui.SameLine()
             if drawChoiceButton("Всего (Накопительно)", "CALENDAR_DAYS", goal_edit_scope[0] == 1, 180) then
                 goal_edit_scope[0] = 1
+                show_projection_pinned[0] = true -- "Всего (Накопительно)" (долгосрочный период)
             end
 
             imgui.Dummy(imgui.ImVec2(0, 5))
@@ -1922,35 +2142,26 @@ end
         imgui.End()
     end
 
-    -- === ДОПОЛНИТЕЛЬНОЕ ОКНО ГРАФИКА ДОХОДОВ ===
-    -- === ПОДВИЖНОЕ ОКНО ГРАФИКА С ЛЕВОЙ ПАНЕЛЬЮ И ИТОГАМИ ===
-
-
-      -- === КОМПАКТНОЕ ПОДВИЖНОЕ ОКНО ГРАФИКА В СТИЛЕ SCRIPT [TM] ===
-    if show_chart_window[0] and session_stats.goal_configured then
+    -- === КОМПАКТНОЕ ПОДВИЖНОЕ ОКНО ГРАФИКА В СТИЛЕ SCRIPT [TM] ===
+    if show_chart_window[0] then
         local cWinW, cWinH = 650, 410
 
-        -- Cond.Appearing дает возможность перемещать окно мышкой по экрану
         imgui.SetNextWindowPos(imgui.ImVec2(resX / 2, resY / 2), imgui.Cond.Appearing, imgui.ImVec2(0.5, 0.5))
         imgui.SetNextWindowSize(imgui.ImVec2(cWinW, cWinH), imgui.Cond.Always)
         imgui.PushStyleColor(imgui.Col.WindowBg, imgui.ImVec4(0.09, 0.11, 0.15, 0.98))
 
         if imgui.Begin("##IncomeChartWindow", show_chart_window, imgui.WindowFlags.NoTitleBar + imgui.WindowFlags.NoResize + imgui.WindowFlags.NoCollapse) then
 
-            -- Заголовок в стиле основного меню
             imgui.TextColored(imgui.ImVec4(0.95, 0.76, 0.18, 1.00), getIcon("CHART_COLUMN", "") .. u8("График доходов и расходов"))
             imgui.Separator()
             imgui.Dummy(imgui.ImVec2(0, 3))
 
-            -- =======================================
             -- ЛЕВАЯ ВЕРТИКАЛЬНАЯ ПАНЕЛЬ
-            -- =======================================
             imgui.BeginChild("##chart_sidebar", imgui.ImVec2(145, cWinH - 80), true)
                 
                 imgui.TextColored(imgui.ImVec4(0.95, 0.76, 0.18, 1.00), getIcon("CHART_COLUMN", "") .. u8("Вид:"))
                 imgui.Dummy(imgui.ImVec2(0, 2))
 
-                -- Иконки переключения столбцы / линии
                 local is_bar = (chart_view_mode[0] == 0)
                 if is_bar then
                     imgui.PushStyleColor(imgui.Col.Button, imgui.ImVec4(0.18, 0.80, 0.44, 0.60))
@@ -2007,6 +2218,9 @@ end
                     end
                     if imgui.Button(label, imgui.ImVec2(127, 26)) then
                         chart_days_period[0] = periodVal
+                        if periodVal == 0 then
+                            show_projection_pinned[0] = true -- Закрепить при нажатии на долгосрочный период
+                        end
                     end
                     imgui.PopStyleColor(2)
                 end
@@ -2023,9 +2237,7 @@ end
 
             imgui.SameLine()
 
-            -- =======================================
             -- ПРАВАЯ ОБЛАСТЬ: ГРАФИК И ИТОГИ
-            -- =======================================
             imgui.BeginChild("##chart_plot_area", imgui.ImVec2(cWinW - 170, cWinH - 80), true)
                 
                 local period = chart_days_period[0]
@@ -2040,7 +2252,8 @@ end
                                     (session_stats.dep_growth or 0) + 
                                     (session_stats.biz_income or 0) + 
                                     (session_stats.btc_income or 0) + 
-                                    (session_stats.trade_income or 0)
+                                    (session_stats.trade_income or 0) +
+                                    (session_stats.deal_income or 0)
 
                 if period == 0 then
                     local all_dates = {}
@@ -2108,7 +2321,6 @@ end
                 local canvas_pos = imgui.GetCursorScreenPos()
                 local canvas_w, canvas_h = cWinW - 190, 150
 
-                -- Подложка
                 draw_list:AddRectFilled(canvas_pos, imgui.ImVec2(canvas_pos.x + canvas_w, canvas_pos.y + canvas_h), imgui.GetColorU32Vec4(imgui.ImVec4(0.06, 0.08, 0.11, 1.00)), 6.0)
                 draw_list:AddRect(canvas_pos, imgui.ImVec2(canvas_pos.x + canvas_w, canvas_pos.y + canvas_h), imgui.GetColorU32Vec4(imgui.ImVec4(0.18, 0.22, 0.30, 1.00)), 6.0)
 
@@ -2117,7 +2329,6 @@ end
                 local plot_w = canvas_w - margin_left - 10
                 local plot_h = canvas_h - margin_bottom - 15
 
-                -- Сетка
                 for g = 0, 4 do
                     local y = canvas_pos.y + 8 + (plot_h * (g / 4))
                     draw_list:AddLine(imgui.ImVec2(canvas_pos.x + margin_left, y), imgui.ImVec2(canvas_pos.x + canvas_w - 10, y), imgui.GetColorU32Vec4(imgui.ImVec4(0.15, 0.18, 0.25, 0.60)))
@@ -2131,7 +2342,6 @@ end
                 local y1_base = canvas_pos.y + 8 + plot_h
 
                 if chart_view_mode[0] == 0 then
-                    -- Столбчатая
                     local bar_w = math.max(bar_gap * 0.55, 3)
 
                     for idx, item in ipairs(chart_data) do
@@ -2173,7 +2383,6 @@ end
                         end
                     end
                 else
-                    -- Линейная
                     local inc_points = {}
                     local exp_points = {}
 
@@ -2225,9 +2434,6 @@ end
 
                 imgui.Dummy(imgui.ImVec2(0, canvas_h + 4))
 
-                -- =======================================
-                -- ИТОГОВЫЙ БЛОК СВЕРХУ ВНИЗ
-                -- =======================================
                 imgui.TextColored(imgui.ImVec4(0.18, 0.80, 0.44, 1.00), getIcon("MONEY_BILL_WAVE", "") .. u8("Доходы: $") .. formatNumber(total_income_period))
                 imgui.TextColored(imgui.ImVec4(0.95, 0.26, 0.26, 1.00), getIcon("TRASH", "") .. u8("Траты: -$") .. formatNumber(total_expenses_period))
 
@@ -2260,6 +2466,7 @@ end
         end
         imgui.PopStyleColor()
     end
+
     -- === МОДАЛЬНОЕ ОКНО ВЫБОРА СМАЙЛИКА ===
     if show_emoji_selector_modal[0] then
         imgui.SetNextWindowPos(imgui.ImVec2(0, 0), imgui.Cond.Always)
@@ -2385,14 +2592,12 @@ end
             imgui.PushStyleColor(imgui.Col.ButtonHovered, imgui.ImVec4(0.24, 0.26, 0.33, 1.00))
             if imgui.Button(u8("Напомнить позже"), imgui.ImVec2(btn_w, 35)) then
                 show_update_popup[0] = false
-                -- Если открыли вручную через /tm — открываем главное окно, иначе просто закрываем
                 if wasOpenedByCommand then
                     window[0] = true
                     wasOpenedByCommand = false
                 end
             end
             imgui.PopStyleColor(2)
-
 
             imgui.EndGroup()
             imgui.End()
@@ -2401,9 +2606,121 @@ end
     end
 end)
 
+-- === ОБРАБОТКА ИЗМЕНЕНИЯ БАЛАНСА ПОСЛЕ ТРЕЙДА ===
+local function processTradeMoneyChange(new_money)
+    new_money = tonumber(new_money)
+    if not new_money then return end
+
+    if tm_last_money == nil then
+        tm_last_money = new_money
+        return
+    end
+
+    local difference = new_money - tm_last_money
+    tm_last_money = new_money
+
+    if not tm_trade_waiting_money then return end
+
+    if os.clock() - tm_trade_waiting_time > 5.0 then
+        tm_trade_waiting_money = false
+        return
+    end
+
+    if difference >= 0 then return end
+
+    local expense = math.abs(difference)
+    if expense <= 0 then return end
+
+    tm_trade_waiting_money = false
+
+    if samp._tm_last_trade_expense == expense and samp._tm_last_trade_expense_time and (os.clock() - samp._tm_last_trade_expense_time < 3.0) then
+        return
+    end
+
+    samp._tm_last_trade_expense = expense
+    samp._tm_last_trade_expense_time = os.clock()
+
+    session_stats.expenses_accumulated = (session_stats.expenses_accumulated or 0) + expense
+    save_stats_to_file()
+
+    sampAddChatMessage("{FF6347}[TM] Переданные деньги учтены как расход: -$" .. formatNumber(expense), -1)
+end
+
+function samp.onSetPlayerMoney(money)
+    processTradeMoneyChange(money)
+end
+
+-- === ОБРАБОТКА ДИАЛОГА РЕЗУЛЬТАТА СДЕЛКИ (DIALOG 28149) ===
+function samp.onShowDialog(dialogId, style, title, button1, button2, text)
+    if not text then return end
+
+    local cleanTitle = cleanColors(tostring(title or "")):upper()
+    local cleanText = cleanColors(tostring(text or ""))
+
+    if dialogId == 28149 or cleanTitle:find("РЕЗУЛЬТАТ СДЕЛКИ") or cleanText:find("РЕЗУЛЬТАТ СДЕЛКИ") or cleanText:find("Передано:") then
+        tm_trade_waiting_money = true
+        tm_trade_waiting_time = os.clock()
+
+        local received_block = cleanText:match("Получено:%s*([^\r\n]+)")
+        if received_block and not received_block:find("^%s*%-") then
+            local inc_val = parse_numeric_value(received_block)
+            if inc_val and inc_val > 0 then
+                local now = os.clock()
+                if samp._tm_last_deal_amount ~= inc_val or not samp._tm_last_deal_time or (now - samp._tm_last_deal_time >= 3.0) then
+                    samp._tm_last_deal_amount = inc_val
+                    samp._tm_last_deal_time = now
+
+                    session_stats.deal_income = (session_stats.deal_income or 0) + inc_val
+                    save_stats_to_file()
+                    sampAddChatMessage("{00FF00}[TM] Доход от трейда добавлен в финансы: $" .. formatNumber(inc_val), -1)
+                end
+            end
+        end
+    end
+end
+
+-- === ОБРАБОТКА ЧАТ-СООБЩЕНИЙ ОБМЕНА ===
+local function processDealIncomeMessage(text)
+    if not text then return end
+
+    local clean = tostring(text):gsub("{%x%x%x%x%x%x}", "")
+
+    local amount_text = clean:match("[Зз]а обмен вы получили%s*.-%s*([%d%.,%s]+)%s*,%s*комиссия")
+                     or clean:match("[Зз]а обмен вы получили%s*.-%s*([%d%.,]+)")
+
+    if not amount_text then return end
+
+    local amount = parse_numeric_value(amount_text)
+    if not amount or amount <= 0 then return end
+
+    local now = os.clock()
+    if samp._tm_last_deal_amount == amount and samp._tm_last_deal_time and (now - samp._tm_last_deal_time < 3.0) then
+        return
+    end
+
+    samp._tm_last_deal_amount = amount
+    samp._tm_last_deal_time = now
+
+    session_stats.deal_income = (session_stats.deal_income or 0) + amount
+    save_stats_to_file()
+
+    sampAddChatMessage("{00FF00}[TM] Доход от трейда добавлен в финансы: $" .. formatNumber(amount), -1)
+end
+
 function samp.onServerMessage(color, text)
     if not text then return end
+
     local cleanText = text:gsub("{%x%x%x%x%x%x}", "")
+
+    if cleanText:find("подтвердил сделку", 1, true)
+        or cleanText:find("подтвердили сделку", 1, true)
+        or cleanText:find("совершили сделку", 1, true) then
+
+        tm_trade_waiting_money = true
+        tm_trade_waiting_time = os.clock()
+    end
+
+    processDealIncomeMessage(cleanText)
 
     if cleanText:find("Вы успешно сняли") and cleanText:find("со счета бизнес") then
         local biz_amount_str = cleanText:match("Вы успешно сняли%s*.-(%d[%d%.,%s]*)")
@@ -2456,18 +2773,34 @@ function samp.onServerMessage(color, text)
         end
     end
 
-    if cleanText:find("У Вас есть предметы в хранилище пункта выдачи") or cleanText:find("%[Хранилище предметов%]") then
-        if storage[0] then
-            local storage_tag = cfg.config.storageEmoji ~= "emoji_none" and ("{" .. cfg.config.storageEmoji .. "} ") or ""
-            sendTelegramMessage(storage_tag .. cleanText)
+    -- === ТОЛЬКО НОВЫЙ ПРЕДМЕТ В ХРАНИЛИЩЕ ===
+    if cleanText:find("%[Хранилище предметов%]") then
+        -- 1. Проверяем, не написал ли это игрок в обычный/VIP чат
+        local is_player_chat = cleanText:find("говорит:") or cleanText:find("сказал:") or cleanText:find("%[%d+%]%s*:")
+        
+        if not is_player_chat then
+            -- 2. Игнорируем стандартные информационные сообщения при входе в игру
+            local is_login_info = cleanText:find("У Вас есть предметы в хранилище") or cleanText:find("Местоположение:%s*/gps")
+            
+            -- 3. Логируем ТОЛЬКО официальные системные сообщения о добавлении нового предмета
+            if not is_login_info and cleanText:find("Добавлен новый предмет") then
+                if storage[0] then
+                    local storage_tag = cfg.config.storageEmoji ~= "emoji_none" and ("{" .. cfg.config.storageEmoji .. "} ") or ""
+                    sendTelegramMessage(storage_tag .. cleanText)
+                end
+            end
         end
         return 
     end
 
--- Примерно строка 1350:
--- =======================================
--- ЗАМЕНИТЕ БЛОК ПРОВЕРКИ ПРЕДМЕТА НА СЛЕДУЮЩИЙ:
+    -- === ОБРАБОТКА ПОЛУЧЕНИЯ ПРЕДМЕТОВ ===
+    local itemId = text:match(":item(%d+):")
+
     if color == -65281 or text:find("Вам добавлен предмет") or text:find("добавлен предмет") then
+        -- Полный блок от сообщений игроков (говорит / сказал / чаты игроков)
+        local is_player_chat = cleanText:find("говорит:") or cleanText:find("сказал:") or cleanText:find("%[%d+%]%s*:")
+        if is_player_chat then return end
+
         local itemId = text:match(":item(%d+):")
         if itemId then
             local name = getItemName(itemId)
@@ -2479,22 +2812,20 @@ function samp.onServerMessage(color, text)
                 end
             end
 
-            if not ui.sendUnknownItems[0] and name:find("ID:") then return end
-            if ui.itemAdding[0] then
+            -- Исправлено использование переменных настроек без привязки к ui.
+            if not sendUnknownItems[0] and name:find("ID:") then return end
+            if itemAdding[0] then
                 local item_tag = cfg.config.itemEmoji ~= "emoji_none" and ("{" .. cfg.config.itemEmoji .. "} ") or ""
-                local message_to_send = ui.shortMessage[0] and (text:gsub(":item%d+:", "'" .. name .. "'") .. ", используйте клавишу 'Y' или /invent") or ((item_tag .. "Вам был добавлен предмет %s {emoji_backpack}"):format(name))
+                local message_to_send = shortMessage[0] and (text:gsub(":item%d+:", "'" .. name .. "'") .. ", используйте клавишу 'Y' или /invent") or ((item_tag .. "Вам был добавлен предмет %s {emoji_backpack}"):format(name))
                 sendTelegramMessage(message_to_send)
             end
             return
         end
     end
--- =======================================
-
 
 
 
     if cleanText:find("Вы выбрали местом спавна") then
-        -- Если есть обновление, показываем окно и отмечаем, что это авто-показ при входе
         if update_available then
             wasOpenedByCommand = false
             show_update_popup[0] = true
@@ -2505,8 +2836,7 @@ function samp.onServerMessage(color, text)
             sendTelegramMessage(spawn_tag .. cleanText)
         end
     end
- 
- 
+
     if cleanText:find("^%[Боевой Пропуск%]") or cleanText:find("выполнили задание") then
         local cleaned = cleanText:gsub("^%s+", ""):gsub("%s+$", "")
         session_stats.quests_completed = session_stats.quests_completed + 1
@@ -2525,7 +2855,7 @@ function samp.onServerMessage(color, text)
             end
         end
     end 
- 
+
     local PayDayLineDetector = false
     if cleanText:find('БАНКОВСКИЙ ЧЕК') or cleanText:find('Банковский чек') then
         getPayday = true
