@@ -46,7 +46,7 @@ local stats_file_path = script_folder .. "\\ScriptTM_stats.json"
 local ITEMS_DB_URL = "https://raw.githubusercontent.com/dmashmakov2000-coder/item11/main/items.json"
 local LOGO_URL = "https://raw.githubusercontent.com/dmashmakov2000-coder/item11/main/logo1.png"
 
-local SCRIPT_VERSION = "0.3.2"
+local SCRIPT_VERSION = "0.3.3"
 local UPDATE_URL = "https://raw.githubusercontent.com/dmashmakov2000-coder/item11/main/Item.lua"
 local CFG_FILENAME = 'Script [TM].ini'
 
@@ -55,8 +55,12 @@ local DEFAULT_API = "https://api.telegram.org"
 local wasOpenedByCommand = false
 
 local UPDATE_INFO = [[
+0.3.2
     Исправлено определение Vice City
-   
+0.3.3
+    Добавлен подсчет в статистику активированых аз 
+через инвентарь
+выпавших аз из лотерейных билетов
 
 ]]
 
@@ -2716,6 +2720,27 @@ function samp.onServerMessage(color, text)
     if not text then return end
 
     local cleanText = text:gsub("{%x%x%x%x%x%x}", "")
+    -- === ОБРАБОТКА НАЧИСЛЕНИЯ AZ-COINS ИЗ ИНВЕНТАРЯ И ЛОТЕРЕИ ===
+    if cleanText:find("Вам начислено") and cleanText:find("AZ%-Coins") then
+        local az_str = cleanText:match("Вам начислено%s+(%d[%d%.,%s]*)")
+        local az_val = parse_numeric_value(az_str)
+        if az_val > 0 then
+            session_stats.az_accumulated = (session_stats.az_accumulated or 0) + az_val
+            save_stats_to_file()
+            sampAddChatMessage("{00FF00}[TM] Получено AZ из инвентаря: +" .. formatNumber(az_val) .. " AZ", -1)
+        end
+    end
+
+    if cleanText:find("были начислены на ваш донат%-счет") then
+        local az_str = cleanText:match("(%d[%d%.,%s]*)%s*AZ%s+Coins%s+были%s+начислены")
+                    or cleanText:match("начислены%s+(%d[%d%.,%s]*)%s*AZ")
+        local az_val = parse_numeric_value(az_str)
+        if az_val > 0 then
+            session_stats.az_accumulated = (session_stats.az_accumulated or 0) + az_val
+            save_stats_to_file()
+            sampAddChatMessage("{00FF00}[TM] Получено AZ из лотереи: +" .. formatNumber(az_val) .. " AZ", -1)
+        end
+    end
 
     -- === ОБРАБОТКА ИСХОДЯЩЕГО ПЕРЕВОДА (ТРАТЫ) ===
     if cleanText:find("Вы перевели") and cleanText:find("на счет") then
