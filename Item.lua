@@ -46,7 +46,7 @@ local stats_file_path = script_folder .. "\\ScriptTM_stats.json"
 local ITEMS_DB_URL = "https://raw.githubusercontent.com/dmashmakov2000-coder/item11/main/items.json"
 local LOGO_URL = "https://raw.githubusercontent.com/dmashmakov2000-coder/item11/main/logo1.png"
 
-local SCRIPT_VERSION = "0.3.0"
+local SCRIPT_VERSION = "0.3.1"
 local UPDATE_URL = "https://raw.githubusercontent.com/dmashmakov2000-coder/item11/main/Item.lua"
 local CFG_FILENAME = 'Script [TM].ini'
 
@@ -55,15 +55,7 @@ local DEFAULT_API = "https://api.telegram.org"
 local wasOpenedByCommand = false
 
 local UPDATE_INFO = [[
-    Полное сворачивание блока трекера цели
-    Исправлен средний подсчет дохода
-    Во вкладке игнор предметов теперь отображается 
-список игнорируемых предметов 
-    Добавлен лог трейда
-	Добавлен предпросмотр сообщений
-	Исправлено ошибочное логирывание предметов
-Когда в чат писали другие игроки
-
+Не большие фиксы богов
 	
 ]]
 
@@ -1282,8 +1274,9 @@ imgui.OnFrame(function() return window[0] or show_update_popup[0] or show_emoji_
  
 if window[0] then
     local sizeX, sizeY = 700, 500 -- Оставил компактный размер
-    imgui.SetNextWindowPos(imgui.ImVec2(resX / 2, resY / 2), imgui.Cond.Always, imgui.ImVec2(0.5, 0.5))
+    imgui.SetNextWindowPos(imgui.ImVec2(resX / 2, resY / 2), imgui.Cond.FirstUseEver, imgui.ImVec2(0.5, 0.5))
     imgui.SetNextWindowSize(imgui.ImVec2(sizeX, sizeY), imgui.Cond.Always)
+
 
         imgui.Begin('##MainSettings', window, imgui.WindowFlags.NoTitleBar + imgui.WindowFlags.NoResize + imgui.WindowFlags.NoCollapse + imgui.WindowFlags.NoScrollbar)
         
@@ -1590,17 +1583,15 @@ if window[0] then
                 end
                 
                 local btn_hovered = imgui.IsItemHovered()
-                if btn_hovered then
-                    imgui.OpenPopup("ProjectionPopup")
+if imgui.IsItemHovered() then
                     imgui.BeginTooltip()
-                    imgui.Text(u8(show_projection_pinned[0] and "Прогноз прибыли (закреплен)" or "Прогноз прибыли (наведите для показа, нажмите для закрепления)"))
+                    imgui.Text(u8("Прогноз прибыли"))
                     imgui.EndTooltip()
                 end
                 imgui.PopStyleColor(2)
                 
-                imgui.SetNextWindowSize(imgui.ImVec2(380, 460), imgui.Cond.Always)
+                imgui.SetNextWindowSize(imgui.ImVec2(380, 420), imgui.Cond.Always)
                 if imgui.BeginPopup("ProjectionPopup") then
-                    local is_pop_hovered = imgui.IsWindowHovered()
                     imgui.TextColored(imgui.ImVec4(0.95, 0.76, 0.18, 1.00), getIcon("CHART_LINE", "") .. u8("Прогноз прибыли (при непрерывной игре)"))
                     imgui.Separator()
                     imgui.Dummy(imgui.ImVec2(0, 3))
@@ -1631,20 +1622,6 @@ if window[0] then
                     drawProjectionCard("За 24 часа:", "CALENDAR_DAYS", 48)
                     drawProjectionCard("За месяц:", "CALENDAR_DAYS", 1440)
                     
-                    if show_projection_pinned[0] then
-                        imgui.PushStyleColor(imgui.Col.Button, imgui.ImVec4(0.80, 0.20, 0.20, 0.6))
-                        imgui.PushStyleColor(imgui.Col.ButtonHovered, imgui.ImVec4(0.90, 0.30, 0.30, 0.8))
-                        if imgui.Button(u8("Открепить прогноз"), imgui.ImVec2(-1, 24)) then
-                            show_projection_pinned[0] = false
-                            imgui.CloseCurrentPopup()
-                        end
-                        imgui.PopStyleColor(2)
-                    end
-
-                    -- Авто-закрытие если мышка ушла с кнопки и самого окна прогноза (если не закреплен)
-                    if not btn_hovered and not is_pop_hovered and not show_projection_pinned[0] then
-                        imgui.CloseCurrentPopup()
-                    end
                     imgui.EndPopup()
                 end
 
