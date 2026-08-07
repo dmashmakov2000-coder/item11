@@ -46,7 +46,7 @@ local stats_file_path = script_folder .. "\\ScriptTM_stats.json"
 local ITEMS_DB_URL = "https://raw.githubusercontent.com/dmashmakov2000-coder/item11/main/items.json"
 local LOGO_URL = "https://raw.githubusercontent.com/dmashmakov2000-coder/item11/main/logo1.png"
 
-local SCRIPT_VERSION = "0.3.3"
+local SCRIPT_VERSION = "0.3.4"
 local UPDATE_URL = "https://raw.githubusercontent.com/dmashmakov2000-coder/item11/main/Item.lua"
 local CFG_FILENAME = 'Script [TM].ini'
 
@@ -61,6 +61,13 @@ local UPDATE_INFO = [[
     Добавлен подсчет в статистику активированых аз 
 через инвентарь
 выпавших аз из лотерейных билетов
+0.3.4
+    Добавлен 
+Общий линейный график
+Исторя финансовых операций
+    Изменея 
+Все графики подписаны
+
 
 ]]
 
@@ -351,7 +358,9 @@ local function save_stats_to_file()
         goal_start_from_zero = session_stats.goal_start_from_zero or false,
         goal_start_money = session_stats.goal_start_money or 0,
         goal_start_az = session_stats.goal_start_az or 0,
-        ignored_items = session_stats.ignored_items or {}
+ignored_items = session_stats.ignored_items or {},
+tx_history = session_stats.tx_history or {} -- <-- ДОБАВИТЬ ЭТУ СТРОКУ
+
     }
     local f = io.open(stats_file_path, "w")
     if f then
@@ -796,6 +805,41 @@ local function get_max_income_report_text()
     return table.concat(lines, "\n")
 end
 
+
+
+
+-- === ЛОГИРОВАНИЕ ОПЕРАЦИЙ В ИСТОРИЮ ===
+local function add_history_log(category, desc, amount_str, is_expense)
+    session_stats.tx_history = session_stats.tx_history or {}
+    
+    local now_ts = os.time()
+    local now_time = os.date("%H:%M:%S", now_ts)
+    local now_date = os.date("%d.%m.%Y", now_ts)
+
+    table.insert(session_stats.tx_history, 1, { -- Новые записи всегда вверху
+        timestamp = now_ts,
+        date = now_date,
+        time = now_time,
+        category = category or "Финансы",
+        desc = desc or "Операция",
+        amount_text = tostring(amount_str),
+        is_expense = is_expense or false
+    })
+
+    -- Храним последние 1000 операций
+    while #session_stats.tx_history > 1000 do
+        table.remove(session_stats.tx_history)
+    end
+
+    if type(save_stats_to_file) == "function" then
+        save_stats_to_file()
+    end
+end
+
+
+
+
+
 local function load_stats_from_file()
     local current_date = os.date("%d.%m.%Y")
     
@@ -824,7 +868,9 @@ local function load_stats_from_file()
                 session_stats.goal_start_from_zero = session_stats.goal_start_from_zero or false
                 session_stats.goal_start_money = session_stats.goal_start_money or 0
                 session_stats.goal_start_az = session_stats.goal_start_az or 0
-                session_stats.ignored_items = session_stats.ignored_items or {}
+session_stats.ignored_items = session_stats.ignored_items or {}
+session_stats.tx_history = session_stats.tx_history or {} -- <-- ДОБАВИТЬ ЭТУ СТРОКУ
+
 
                 if session_stats.last_active_date ~= current_date then
                     session_stats.time_in_game = 0
@@ -1404,15 +1450,18 @@ imgui.OnFrame(function() return window[0] or show_update_popup[0] or show_emoji_
                 imgui.PopStyleColor(3)
             end
 
-            drawSidebarTab(1, "GEAR", "Настройки")
-            imgui.Dummy(imgui.ImVec2(0, 5))
-            drawSidebarTab(2, "BELL", "Уведомления")
-            imgui.Dummy(imgui.ImVec2(0, 5))
-            drawSidebarTab(3, "SLIDERS", "Стилизация")
-            imgui.Dummy(imgui.ImVec2(0, 5))
-            drawSidebarTab(4, "CHART_LINE", "Статистика")
-            imgui.Dummy(imgui.ImVec2(0, 5))
-            drawSidebarTab(5, "BAN", "Игнор предметов")
+drawSidebarTab(1, "GEAR", "Настройки")
+imgui.Dummy(imgui.ImVec2(0, 5))
+drawSidebarTab(2, "BELL", "Уведомления")
+imgui.Dummy(imgui.ImVec2(0, 5))
+drawSidebarTab(3, "SLIDERS", "Стилизация")
+imgui.Dummy(imgui.ImVec2(0, 5))
+drawSidebarTab(4, "CHART_LINE", "Статистика")
+imgui.Dummy(imgui.ImVec2(0, 5))
+drawSidebarTab(5, "BAN", "Игнор предметов")
+imgui.Dummy(imgui.ImVec2(0, 5))
+drawSidebarTab(6, "CLOCK_ROTATE_LEFT", "История") -- <-- ДОБАВЛЕНО
+
 
             imgui.SetCursorPosY(sizeY - 80)
             imgui.Separator()
@@ -1994,7 +2043,104 @@ imgui.OnFrame(function() return window[0] or show_update_popup[0] or show_emoji_
 
                 imgui.EndChild()
                 imgui.PopStyleColor()
+            elseif currentTab[0] == 6 then
+                imgui.TextColored(imgui.ImVec4(0.95, 0.76, 0.18, 1.00), getIcon("CLOCK_ROTATE_LEFT", "") .. u8("История финансовых операций"))
+                imgui.TextDisabled(u8("Подробный лог всех доходов и расходов по дням."))
+                imgui.Separator()
+                imgui.Dummy(imgui.ImVec2(0, 3))
 
+                -- Переменные фильтра истории
+                if history_date_filter == nil then history_date_filter = 0 end -- 0: За все время, 1: Сегодня, 2: Конкретная дата
+
+                -- КНОПКИ ВЫБОРА ФИЛЬТРА ДАТЫ
+                local function drawHistFilterBtn(label, mode_id, w)
+                    local is_active = (history_date_filter == mode_id)
+                    if is_active then
+                        imgui.PushStyleColor(imgui.Col.Button, imgui.ImVec4(0.18, 0.80, 0.44, 0.60))
+                        imgui.PushStyleColor(imgui.Col.ButtonHovered, imgui.ImVec4(0.18, 0.80, 0.44, 0.80))
+                    else
+                        imgui.PushStyleColor(imgui.Col.Button, imgui.ImVec4(0.18, 0.20, 0.26, 0.80))
+                        imgui.PushStyleColor(imgui.Col.ButtonHovered, imgui.ImVec4(0.24, 0.26, 0.33, 1.00))
+                    end
+                    if imgui.Button(u8(label), imgui.ImVec2(w or 110, 26)) then
+                        history_date_filter = mode_id
+                    end
+                    imgui.PopStyleColor(2)
+                end
+
+                drawHistFilterBtn("За всё время", 0, 130)
+                imgui.SameLine()
+                drawHistFilterBtn("Сегодня", 1, 100)
+
+                imgui.SameLine(sizeX - 320)
+                imgui.PushStyleColor(imgui.Col.Button, imgui.ImVec4(0.95, 0.26, 0.26, 0.20))
+                imgui.PushStyleColor(imgui.Col.ButtonHovered, imgui.ImVec4(0.95, 0.26, 0.26, 0.40))
+                if imgui.Button(getIcon("TRASH", "") .. u8("Очистить историю"), imgui.ImVec2(100, 26)) then
+                    session_stats.tx_history = {}
+                    save_stats_to_file()
+                    show_arz_notify('info', 'TM', 'История операций очищена.', 3000)
+                end
+                imgui.PopStyleColor(2)
+
+                imgui.Dummy(imgui.ImVec2(0, 4))
+
+                -- СПИСОК ОПЕРАЦИЙ С РАЗДЕЛИТЕЛЯМИ ПО ДНЯМ
+                imgui.PushStyleColor(imgui.Col.ChildBg, imgui.ImVec4(0.06, 0.08, 0.11, 1.00))
+                imgui.BeginChild("##history_scroll_list", imgui.ImVec2(0, sizeY - 125), true)
+
+                local today_str = os.date("%d.%m.%Y")
+                local tx_list = session_stats.tx_history or {}
+                local filtered_tx = {}
+
+                for _, item in ipairs(tx_list) do
+                    if history_date_filter == 0 or (history_date_filter == 1 and item.date == today_str) then
+                        table.insert(filtered_tx, item)
+                    end
+                end
+
+                if #filtered_tx == 0 then
+                    imgui.Dummy(imgui.ImVec2(0, 20))
+                    imgui.TextDisabled(u8("  История операций пуста за выбранный период."))
+                else
+                    local last_rendered_date = ""
+
+                    for idx, item in ipairs(filtered_tx) do
+                        -- РАЗДЕЛИТЕЛЬ ДНЕЙ С ЛИНИЕЙ И ДАТОЙ
+                        if item.date ~= last_rendered_date then
+                            last_rendered_date = item.date
+                            imgui.Dummy(imgui.ImVec2(0, 6))
+                            
+                            local date_label = (item.date == today_str) and ("Сегодня (" .. item.date .. ")") or item.date
+                            imgui.TextColored(imgui.ImVec4(0.95, 0.76, 0.18, 1.00), getIcon("CALENDAR_DAYS", "") .. u8("— " .. date_label .. " —"))
+                            imgui.Separator()
+                            imgui.Dummy(imgui.ImVec2(0, 2))
+                        end
+
+                        -- СТРОКА ОПЕРАЦИИ
+                        imgui.PushIDInt(idx)
+
+                        -- Время
+                        imgui.TextColored(imgui.ImVec4(0.50, 0.55, 0.63, 1.00), item.time or "00:00")
+                        imgui.SameLine(70)
+
+                        -- Описание события
+                        imgui.TextColored(imgui.ImVec4(0.88, 0.89, 0.92, 1.00), u8(item.desc or "Операция"))
+
+                        -- Категория (серый тег)
+                        imgui.SameLine(280)
+                        imgui.TextColored(imgui.ImVec4(0.40, 0.45, 0.55, 1.00), u8("[" .. (item.category or "Финансы") .. "]"))
+
+                        -- Сумма (зеленая при доходе, красная при трате)
+                        imgui.SameLine(sizeX - 350)
+                        local amount_color = item.is_expense and imgui.ImVec4(0.95, 0.26, 0.26, 1.00) or imgui.ImVec4(0.18, 0.80, 0.44, 1.00)
+                        imgui.TextColored(amount_color, u8(item.amount_text or "$0"))
+
+                        imgui.PopID()
+                    end
+                end
+
+                imgui.EndChild()
+                imgui.PopStyleColor()
             end
             imgui.EndChild()
 
@@ -2184,41 +2330,41 @@ imgui.OnFrame(function() return window[0] or show_update_popup[0] or show_emoji_
             imgui.Separator()
             imgui.Dummy(imgui.ImVec2(0, 3))
 
-            imgui.BeginChild("##chart_sidebar", imgui.ImVec2(145, cWinH - 80), true)
-                imgui.TextColored(imgui.ImVec4(0.95, 0.76, 0.18, 1.00), getIcon("CHART_COLUMN", "") .. u8("Вид:"))
-                imgui.Dummy(imgui.ImVec2(0, 2))
+                            imgui.BeginChild("##chart_sidebar", imgui.ImVec2(145, cWinH - 80), true)
+                    imgui.TextColored(imgui.ImVec4(0.95, 0.76, 0.18, 1.00), getIcon("SLIDERS", "") .. u8("Вид:"))
+                    imgui.Dummy(imgui.ImVec2(0, 2))
 
-                local is_bar = (chart_view_mode[0] == 0)
-                if is_bar then
-                    imgui.PushStyleColor(imgui.Col.Button, imgui.ImVec4(0.18, 0.80, 0.44, 0.60))
-                    imgui.PushStyleColor(imgui.Col.ButtonHovered, imgui.ImVec4(0.18, 0.80, 0.44, 0.80))
-                else
-                    imgui.PushStyleColor(imgui.Col.Button, imgui.ImVec4(0.18, 0.20, 0.26, 0.80))
-                    imgui.PushStyleColor(imgui.Col.ButtonHovered, imgui.ImVec4(0.24, 0.26, 0.33, 1.00))
-                end
-                if imgui.Button(getIcon("CHART_COLUMN", "|||") .. "##mode_bar", imgui.ImVec2(58, 28)) then
-                    chart_view_mode[0] = 0
-                end
-                imgui.PopStyleColor(2)
+                    local function drawModeBtn(mode_id, icon_name, tooltip_str, width)
+                        local is_sel = (chart_view_mode[0] == mode_id)
+                        if is_sel then
+                            imgui.PushStyleColor(imgui.Col.Button, imgui.ImVec4(0.18, 0.80, 0.44, 0.60))
+                            imgui.PushStyleColor(imgui.Col.ButtonHovered, imgui.ImVec4(0.18, 0.80, 0.44, 0.80))
+                        else
+                            imgui.PushStyleColor(imgui.Col.Button, imgui.ImVec4(0.18, 0.20, 0.26, 0.80))
+                            imgui.PushStyleColor(imgui.Col.ButtonHovered, imgui.ImVec4(0.24, 0.26, 0.33, 1.00))
+                        end
+                        if imgui.Button(getIcon(icon_name, "") .. "##mode_" .. mode_id, imgui.ImVec2(width or 62, 28)) then
+                            chart_view_mode[0] = mode_id
+                        end
+                        if imgui.IsItemHovered() then
+                            imgui.BeginTooltip()
+                            imgui.Text(u8(tooltip_str))
+                            imgui.EndTooltip()
+                        end
+                        imgui.PopStyleColor(2)
+                    end
 
-                imgui.SameLine()
+                    drawModeBtn(0, "CHART_COLUMN", "Столбцовый графцик")
+                    imgui.SameLine()
+                    drawModeBtn(1, "CHART_LINE", "Линейный графцик (Доход / Траты)")
 
-                local is_line = (chart_view_mode[0] == 1)
-                if is_line then
-                    imgui.PushStyleColor(imgui.Col.Button, imgui.ImVec4(0.18, 0.80, 0.44, 0.60))
-                    imgui.PushStyleColor(imgui.Col.ButtonHovered, imgui.ImVec4(0.18, 0.80, 0.44, 0.80))
-                else
-                    imgui.PushStyleColor(imgui.Col.Button, imgui.ImVec4(0.18, 0.20, 0.26, 0.80))
-                    imgui.PushStyleColor(imgui.Col.ButtonHovered, imgui.ImVec4(0.24, 0.26, 0.33, 1.00))
-                end
-                if imgui.Button(getIcon("CHART_LINE", "/\\") .. "##mode_line", imgui.ImVec2(58, 28)) then
-                    chart_view_mode[0] = 1
-                end
-                imgui.PopStyleColor(2)
+                    imgui.Dummy(imgui.ImVec2(0, 2))
+                    drawModeBtn(2, "CHART_AREA", "Общий линейный график", 127) -- Новая третья ячейка
+                    
+                    imgui.Dummy(imgui.ImVec2(0, 6))
+                    imgui.Separator()
+                    imgui.Dummy(imgui.ImVec2(0, 6))
 
-                imgui.Dummy(imgui.ImVec2(0, 6))
-                imgui.Separator()
-                imgui.Dummy(imgui.ImVec2(0, 6))
 
                 imgui.TextColored(imgui.ImVec4(0.95, 0.76, 0.18, 1.00), getIcon("CALENDAR_DAYS", "") .. u8("Период:"))
                 imgui.Dummy(imgui.ImVec2(0, 2))
@@ -2355,7 +2501,8 @@ imgui.OnFrame(function() return window[0] or show_update_popup[0] or show_emoji_
                 local mouse_pos = imgui.GetMousePos()
                 local y1_base = canvas_pos.y + 8 + plot_h
 
-                if chart_view_mode[0] == 0 then
+                               if chart_view_mode[0] == 0 then
+                    -- === РЕЖИМ 1: ОБЩИЙ СТОЛБЕЦ (Доход/Траты) ===
                     local bar_w = math.max(bar_gap * 0.55, 3)
 
                     for idx, item in ipairs(chart_data) do
@@ -2396,7 +2543,8 @@ imgui.OnFrame(function() return window[0] or show_update_popup[0] or show_emoji_
                             imgui.EndTooltip()
                         end
                     end
-                else
+                elseif chart_view_mode[0] == 1 then
+                    -- === РЕЖИМ 2: ЛИНЕЙНЫЙ ТРЕНД (Доход/Траты) ===
                     local inc_points = {}
                     local exp_points = {}
 
@@ -2444,7 +2592,67 @@ imgui.OnFrame(function() return window[0] or show_update_popup[0] or show_emoji_
                             draw_list:AddText(imgui.ImVec2(pt_inc.x - 10, y1_base + 3), imgui.GetColorU32Vec4(imgui.ImVec4(0.60, 0.65, 0.73, 1.00)), item.short)
                         end
                     end
-                end
+                elseif chart_view_mode[0] == 2 then
+                    -- === РЕЖИМ 3: ЧИСТЫЙ ДОХОД (ОДНА ЛИНИЯ) ===
+                    local net_points = {}
+                    local max_net_val = 1
+                    local min_net_val = 0
+
+                    for idx, item in ipairs(chart_data) do
+                        local net_val = item.income - item.expenses
+                        if net_val > max_net_val then max_net_val = net_val end
+                        if net_val < min_net_val then min_net_val = net_val end
+                    end
+                    
+                    local y_range = math.max(1, max_net_val - min_net_val)
+                    
+                    -- Сетка Y для этого режима (чистый доход)
+                    for g = 0, 4 do
+                        local y_grid_pos = canvas_pos.y + 8 + (plot_h * (g / 4))
+                        local grid_val = min_net_val + (y_range * (1 - (g / 4)))
+                        draw_list:AddLine(imgui.ImVec2(canvas_pos.x + margin_left, y_grid_pos), imgui.ImVec2(canvas_pos.x + canvas_w - 10, y_grid_pos), imgui.GetColorU32Vec4(imgui.ImVec4(0.15, 0.18, 0.25, 0.60)))
+                        draw_list:AddText(imgui.ImVec2(canvas_pos.x + 4, y_grid_pos - 6), imgui.GetColorU32Vec4(imgui.ImVec4(0.50, 0.55, 0.63, 1.00)), u8("$" .. formatNumber(grid_val)))
+                    end
+
+                    for idx, item in ipairs(chart_data) do
+                        local x = canvas_pos.x + margin_left + ((idx - 0.5) * bar_gap)
+                        local net_val = item.income - item.expenses
+                        local net_ratio = math.min(1.0, math.max(0.0, (net_val - min_net_val) / y_range))
+
+                        table.insert(net_points, imgui.ImVec2(x, y1_base - (plot_h * net_ratio)))
+                    end
+
+                    local col_net_line = imgui.GetColorU32Vec4(imgui.ImVec4(0.98, 0.78, 0.20, 1.00)) -- Золотая линия
+
+                    for i = 1, #net_points - 1 do
+                        draw_list:AddLine(net_points[i], net_points[i+1], col_net_line, 2.5)
+                    end
+
+                    for idx, item in ipairs(chart_data) do
+                        local pt_net = net_points[idx]
+                        draw_list:AddCircleFilled(pt_net, 4.0, col_net_line)
+
+                        local x_min = pt_net.x - (bar_gap / 2)
+                        local x_max = pt_net.x + (bar_gap / 2)
+                        local is_hovered = (mouse_pos.x >= x_min and mouse_pos.x <= x_max and mouse_pos.y >= (canvas_pos.y + 8) and mouse_pos.y <= y1_base)
+
+                        if is_hovered then
+                            draw_list:AddLine(imgui.ImVec2(pt_net.x, canvas_pos.y + 8), imgui.ImVec2(pt_net.x, y1_base), imgui.GetColorU32Vec4(imgui.ImVec4(1,1,1,0.25)), 1.0)
+                            draw_list:AddCircleFilled(pt_net, 6.0, imgui.GetColorU32Vec4(imgui.ImVec4(1.00, 0.90, 0.40, 1.00)))
+
+                            imgui.BeginTooltip()
+                            imgui.TextColored(imgui.ImVec4(0.95, 0.76, 0.18, 1.00), u8("Дата: " .. item.date))
+                            local net_val = item.income - item.expenses
+                            local col_net = net_val >= 0 and imgui.ImVec4(0.25, 0.85, 0.48, 1.00) or imgui.ImVec4(0.95, 0.26, 0.26, 1.00)
+                            imgui.TextColored(col_net, u8("Чистый доход: $") .. formatNumber(net_val))
+                            imgui.EndTooltip()
+                        end
+
+                        if num_points <= 15 or (idx % math.ceil(num_points / 10) == 0) or idx == num_points then
+                            draw_list:AddText(imgui.ImVec2(pt_net.x - 10, y1_base + 3), imgui.GetColorU32Vec4(imgui.ImVec4(0.60, 0.65, 0.73, 1.00)), item.short)
+                        end
+                    end
+                end -- Конец if/elseif для режимов графика
 
                 imgui.Dummy(imgui.ImVec2(0, canvas_h + 4))
 
@@ -2780,66 +2988,74 @@ function samp.onServerMessage(color, text)
 
     processDealIncomeMessage(cleanText)
 
-    if cleanText:find("Вы успешно сняли") and cleanText:find("со счета бизнес") then
-        local biz_amount_str = cleanText:match("Вы успешно сняли%s*.-(%d[%d%.,%s]*)")
-        local biz_val = parse_numeric_value(biz_amount_str)
-        if biz_val > 0 then
-            session_stats.biz_income = (session_stats.biz_income or 0) + biz_val
+if cleanText:find("Вы успешно сняли") and cleanText:find("со счета бизнес") then
+    local biz_amount_str = cleanText:match("Вы успешно сняли%s*.-(%d[%d%.,%s]*)")
+    local biz_val = parse_numeric_value(biz_amount_str)
+    if biz_val > 0 then
+        session_stats.biz_income = (session_stats.biz_income or 0) + biz_val
+        add_history_log("Бизнес", "Снятие со счета бизнеса", "+$" .. formatNumber(biz_val), false)
+        save_stats_to_file()
+    end
+end
+
+
+if cleanText:find("Вы совершили обмен") and cleanText:find("BTC на") then
+    local btc_amount_str = cleanText:match("BTC на%s*.-(%d[%d%.,%s]*)")
+    local btc_val = parse_numeric_value(btc_amount_str)
+    if btc_val > 0 then
+        session_stats.btc_income = (session_stats.btc_income or 0) + btc_val
+        add_history_log("BTC", "Продажа BTC", "+$" .. formatNumber(btc_val), false)
+        save_stats_to_file()
+    end
+end
+
+
+if cleanText:find("Вы совершили обмен") and cleanText:find("на") and cleanText:find("BTC") then
+    local money_amount_str = cleanText:match("Вы совершили обмен%s+(.-)%s+на")
+    if money_amount_str then
+        local cost_val = parse_numeric_value(money_amount_str)
+        if cost_val > 0 then
+            session_stats.expenses_accumulated = (session_stats.expenses_accumulated or 0) + cost_val
+            add_history_log("BTC", "Покупка BTC", "-$" .. formatNumber(cost_val), true)
             save_stats_to_file()
         end
     end
+end
 
-    if cleanText:find("Вы совершили обмен") and cleanText:find("BTC на") then
-        local btc_amount_str = cleanText:match("BTC на%s*.-(%d[%d%.,%s]*)")
-        local btc_val = parse_numeric_value(btc_amount_str)
-        if btc_val > 0 then
-            session_stats.btc_income = (session_stats.btc_income or 0) + btc_val
+
+    -- === ОБРАБОТКА ПРОДАЖИ (ПРИБЫЛЬ) ===
+    -- === ОБРАБОТКА ПРОДАЖИ (ПРИБЫЛЬ) ===
+    -- === ОБРАБОТКА ПРОДАЖИ (ПРИБЫЛЬ) ===
+if cleanText:find("Вы успешно продали") and cleanText:find("получили") then
+    local earned_str = cleanText:match("получили%s+([^%s%()]+)")
+    if earned_str then
+        local earned_val = parse_numeric_value(earned_str)
+        if earned_val > 0 then
+            local multiplier = isViceCityTransaction(text, cleanText) and 136 or 1
+            earned_val = earned_val * multiplier
+            session_stats.trade_income = (session_stats.trade_income or 0) + earned_val
+            add_history_log("Продажа", "Продажа товара", "+$" .. formatNumber(earned_val), false)
             save_stats_to_file()
         end
     end
+end
 
-    if cleanText:find("Вы совершили обмен") and cleanText:find("на") and cleanText:find("BTC") then
-        local money_amount_str = cleanText:match("Вы совершили обмен%s+(.-)%s+на")
-        if money_amount_str then
-            local cost_val = parse_numeric_value(money_amount_str)
-            if cost_val > 0 then
-                session_stats.expenses_accumulated = (session_stats.expenses_accumulated or 0) + cost_val
-                save_stats_to_file()
-            end
-        end
-    end
-
-    -- === ОБРАБОТКА ПРОДАЖИ (ПРИБЫЛЬ) ===
-    -- === ОБРАБОТКА ПРОДАЖИ (ПРИБЫЛЬ) ===
-    -- === ОБРАБОТКА ПРОДАЖИ (ПРИБЫЛЬ) ===
-    if cleanText:find("Вы успешно продали") and cleanText:find("получили") then
-        local earned_str = cleanText:match("получили%s+([^%s%()]+)")
-        if earned_str then
-            local earned_val = parse_numeric_value(earned_str)
-            if earned_val > 0 then
-                local multiplier = isViceCityTransaction(text, cleanText) and 136 or 1
-                earned_val = earned_val * multiplier
-                
-                session_stats.trade_income = (session_stats.trade_income or 0) + earned_val
-                save_stats_to_file()
-            end
-        end
-    end
 
     -- === ОБРАБОТКА ПОКУПКИ (ТРАТЫ) ===
-    if cleanText:find("Вы успешно купили") and cleanText:find("за") then
-        local spent_str = cleanText:match("за%s+([^%s%()]+)")
-        if spent_str then
-            local spent_val = parse_numeric_value(spent_str)
-            if spent_val > 0 then
-                local multiplier = isViceCityTransaction(text, cleanText) and 136 or 1
-                spent_val = spent_val * multiplier
-
-                session_stats.expenses_accumulated = (session_stats.expenses_accumulated or 0) + spent_val
-                save_stats_to_file()
-            end
+if cleanText:find("Вы успешно купили") and cleanText:find("за") then
+    local spent_str = cleanText:match("за%s+([^%s%()]+)")
+    if spent_str then
+        local spent_val = parse_numeric_value(spent_str)
+        if spent_val > 0 then
+            local multiplier = isViceCityTransaction(text, cleanText) and 136 or 1
+            spent_val = spent_val * multiplier
+            session_stats.expenses_accumulated = (session_stats.expenses_accumulated or 0) + spent_val
+            add_history_log("Покупка", "Покупка товара", "-$" .. formatNumber(spent_val), true)
+            save_stats_to_file()
         end
     end
+end
+
 
 
 
