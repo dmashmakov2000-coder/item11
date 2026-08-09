@@ -46,7 +46,7 @@ local stats_file_path = script_folder .. "\\ScriptTM_stats.json"
 local ITEMS_DB_URL = "https://raw.githubusercontent.com/dmashmakov2000-coder/item11/main/items.json"
 local LOGO_URL = "https://raw.githubusercontent.com/dmashmakov2000-coder/item11/main/logo1.png"
 
-local SCRIPT_VERSION = "0.3.4"
+local SCRIPT_VERSION = "0.3.5"
 local UPDATE_URL = "https://raw.githubusercontent.com/dmashmakov2000-coder/item11/main/Item.lua"
 local CFG_FILENAME = 'Script [TM].ini'
 
@@ -55,20 +55,13 @@ local DEFAULT_API = "https://api.telegram.org"
 local wasOpenedByCommand = false
 
 local UPDATE_INFO = [[
-0.3.2
-    Исправлено определение Vice City
-0.3.3
-    Добавлен подсчет в статистику активированых аз 
-через инвентарь
-выпавших аз из лотерейных билетов
-0.3.4
-    Добавлен 
-Общий линейный график
-Исторя финансовых операций
-    Изменея 
-Все графики подписаны
-
-
+0.3.5
+Добавил разрел Майнинга
+В нем пожно посмотреть раздел графы
+Прибыли с майнига
+Затраты на охлождайки
+затраты на электро компанию
+и итогорый результат прибыли
 ]]
 
 -- Точный IP-адрес Vice City
@@ -208,6 +201,11 @@ local session_stats = {
     trade_income = 0,
     deal_income = 0,
     expenses_accumulated = 0,
+	
+	mining_expenses = 0,
+    mining_electricity = 0,
+    mining_coolants = 0,
+	
 
     manually_added_money = 0,
     manually_added_az = 0,
@@ -247,7 +245,9 @@ is_proj_window_hovered = false
 item_search_input = imgui.new.char[128]("")
 
 chart_view_mode = imgui.new.int(0)
+chart_category_mode = imgui.new.int(0) -- <-- ДОБАВИТЬ ЭТУ СТРОЧКУ!
 chart_days_period = imgui.new.int(7)
+
 
 goal_edit_amount = imgui.new.char[64]("10000000000")
 goal_edit_type = imgui.new.int(1)
@@ -340,6 +340,14 @@ local function save_stats_to_file()
         az_accumulated = session_stats.az_accumulated,
         trade_income = session_stats.trade_income or 0,
         deal_income = session_stats.deal_income or 0,
+		
+		           mining_expenses = session_stats.mining_expenses or 0,
+           mining_electricity = session_stats.mining_electricity or 0,
+           mining_coolants = session_stats.mining_coolants or 0,
+   
+
+		
+		
         expenses_accumulated = math.abs(tonumber(session_stats.expenses_accumulated) or 0),
 
         manually_added_money = session_stats.manually_added_money,
@@ -375,6 +383,19 @@ local function saveDayToHistory(date_str)
     session_stats.daily_history[date_str] = {
         income = getCurrentIncome(),
         wages = session_stats.wages_accumulated or 0,
+		
+		
+		
+	           mining_expenses = session_stats.mining_expenses or 0,
+           mining_electricity = session_stats.mining_electricity or 0,
+           mining_coolants = session_stats.mining_coolants or 0,
+   
+	
+		
+		
+		
+		
+	
         deposit = session_stats.dep_growth or 0,
         business = session_stats.biz_income or 0,
         bitcoin = session_stats.btc_income or 0,
@@ -852,7 +873,11 @@ local function load_stats_from_file()
             local ok, decoded = pcall(json.decode, content)
             if ok and decoded then
                 session_stats = decoded
-                
+                                   session_stats.mining_expenses = session_stats.mining_expenses or 0
+                   session_stats.mining_electricity = session_stats.mining_electricity or 0
+                   session_stats.mining_coolants = session_stats.mining_coolants or 0
+   
+
                 session_stats.manually_added_money = session_stats.manually_added_money or 0
                 session_stats.manually_added_az = session_stats.manually_added_az or 0
                 session_stats.trade_income = session_stats.trade_income or 0
@@ -876,6 +901,13 @@ session_stats.tx_history = session_stats.tx_history or {} -- <-- ДОБАВИТЬ ЭТУ СТ
                     session_stats.time_in_game = 0
                     session_stats.quests_completed = 0
                     session_stats.wages_accumulated = 0
+					
+				                       session_stats.mining_expenses = 0
+                       session_stats.mining_electricity = 0
+                       session_stats.mining_coolants = 0
+   
+
+					
                     session_stats.dep_growth = 0
                     session_stats.biz_income = 0
                     session_stats.btc_income = 0
@@ -985,6 +1017,8 @@ ui = {
     is_proj_window_hovered = false,
 
     chart_view_mode = imgui.new.int(0),
+	chart_category_mode = imgui.new.int(0), -- 0: Общее, 1: Майнинг, 2: Торговля, 3: Бизнес
+
     chart_days_period = imgui.new.int(7),
 
     goal_edit_amount = imgui.new.char[64]("10000000000"),
@@ -1216,6 +1250,18 @@ function main()
                 window[0] = not window[0]
             end
         end
+    end)
+    sampRegisterChatCommand('tpmineexp', function(param)
+        if not param or param == "" then
+            sampAddChatMessage("{FF6347}[TM] Использование: /tpmineexp [сумма]", -1)
+            sampAddChatMessage("{FF6347}[TM] Текущие траты на майнинг за сегодня: $" .. formatNumber(session_stats.mining_expenses or 0), -1)
+            return
+        end
+        local val = parse_numeric_value(param)
+        session_stats.mining_expenses = val
+        save_stats_to_file()
+        show_arz_notify('success', 'TM', 'Траты на майнинг изменены!', 3000)
+        sampAddChatMessage("{00FF00}[TM] Траты на майнинг за сегодня установлены на: $" .. formatNumber(val), -1)
     end)
 
     -- === НОВЫЕ КОМАНДЫ ===
@@ -2399,283 +2445,333 @@ drawSidebarTab(6, "CLOCK_ROTATE_LEFT", "История") -- <-- ДОБАВЛЕНО
 
             imgui.SameLine()
 
+
+
+
+
+
+
+   
+
             imgui.BeginChild("##chart_plot_area", imgui.ImVec2(cWinW - 170, cWinH - 80), true)
                 local period = chart_days_period[0]
                 local today_str = session_stats.last_active_date ~= "" and session_stats.last_active_date or os.date("%d.%m.%Y")
-                
-                local chart_data = {}
-                local max_value = 1
-                local total_income_period = 0
-                local total_expenses_period = 0
+                local cat_mode = chart_category_mode[0] -- 0: Общее, 1: Майнинг, 2: Торговля, 3: Бизнес
 
-                local today_gross = (session_stats.wages_accumulated or 0) + 
-                                    (session_stats.dep_growth or 0) + 
-                                    (session_stats.biz_income or 0) + 
-                                    (session_stats.btc_income or 0) + 
-                                    (session_stats.trade_income or 0) +
-                                    (session_stats.deal_income or 0)
+                if cat_mode == 2 or cat_mode == 3 then
+                    -- === В РАЗРАБОТКЕ ===
+                    local dev_title = (cat_mode == 2) and "ТОРГОВЛЯ" or "БИЗНЕС"
+                    imgui.SetCursorPosY(100)
+                    local text_w = imgui.CalcTextSize(u8(dev_title .. " — В РАЗРАБОТКЕ")).x
+                    imgui.SetCursorPosX((cWinW - 170 - text_w) / 2)
+                    imgui.TextColored(imgui.ImVec4(0.95, 0.76, 0.18, 1.00), getIcon("GEAR", "") .. u8(dev_title .. " — В РАЗРАБОТКЕ"))
+                    
+                    imgui.Dummy(imgui.ImVec2(0, 5))
+                    local sub_w = imgui.CalcTextSize(u8("Этот раздел находится в процессе написания.")).x
+                    imgui.SetCursorPosX((cWinW - 170 - sub_w) / 2)
+                    imgui.TextDisabled(u8("Этот раздел находится в процессе написания."))
+                else
+                    -- === РАСЧЕТ ДАННЫХ ДЛЯ ГРАФИКА ===
+                    local chart_data = {}
+                    local max_value = 1
+                    local total_income_period = 0
+                    local total_expenses_period = 0
 
-                if period == 0 then
-                    local all_dates = {}
-                    local date_exists = {}
+                    local today_gross = 0
+                    local today_expenses = 0
 
-                    for date_str, _ in pairs(session_stats.daily_history or {}) do
-                        if not date_exists[date_str] then
-                            date_exists[date_str] = true
-                            table.insert(all_dates, date_str)
+                    if cat_mode == 1 then
+                        today_gross = session_stats.btc_income or 0
+                        today_expenses = session_stats.mining_expenses or 0
+                    else
+                        today_gross = (session_stats.wages_accumulated or 0) + 
+                                      (session_stats.dep_growth or 0) + 
+                                      (session_stats.biz_income or 0) + 
+                                      (session_stats.btc_income or 0) + 
+                                      (session_stats.trade_income or 0) +
+                                      (session_stats.deal_income or 0)
+                        today_expenses = math.abs(tonumber(session_stats.expenses_accumulated) or 0)
+                    end
+
+                    -- Формирование точек
+                    if period == 0 then
+                        local all_dates = {}
+                        local date_exists = {}
+
+                        for date_str, _ in pairs(session_stats.daily_history or {}) do
+                            if not date_exists[date_str] then
+                                date_exists[date_str] = true
+                                table.insert(all_dates, date_str)
+                            end
+                        end
+                        if not date_exists[today_str] then table.insert(all_dates, today_str) end
+                        table.sort(all_dates, function(a, b) return getDateNumber(a) < getDateNumber(b) end)
+
+                        for _, date_str in ipairs(all_dates) do
+                            local inc, exp = 0, 0
+                            if date_str == today_str then
+                                inc, exp = today_gross, today_expenses
+                            else
+                                local day_data = session_stats.daily_history and session_stats.daily_history[date_str]
+                                if day_data then
+                                    if cat_mode == 1 then
+                                        inc = tonumber(day_data.bitcoin or day_data.btc_income) or 0
+                                        exp = tonumber(day_data.mining_expenses) or 0
+                                    else
+                                        exp = math.abs(tonumber(day_data.expenses) or 0)
+                                        inc = (tonumber(day_data.income) or 0) + exp
+                                    end
+                                end
+                            end
+
+                            total_income_period = total_income_period + inc
+                            total_expenses_period = total_expenses_period + exp
+                            if inc > max_value then max_value = inc end
+                            if exp > max_value then max_value = exp end
+
+                            table.insert(chart_data, { date = date_str, short = date_str:sub(1, 5), income = inc, expenses = exp })
+                        end
+                    else
+                        for i = period - 1, 0, -1 do
+                            local ts = os.time() - (i * 86400)
+                            local date_str = os.date("%d.%m.%Y", ts)
+                            local short_str = os.date("%d.%m", ts)
+                            local inc, exp = 0, 0
+
+                            if date_str == today_str then
+                                inc, exp = today_gross, today_expenses
+                            elseif session_stats.daily_history and session_stats.daily_history[date_str] then
+                                local day_data = session_stats.daily_history[date_str]
+                                if cat_mode == 1 then
+                                    inc = tonumber(day_data.bitcoin or day_data.btc_income) or 0
+                                    exp = tonumber(day_data.mining_expenses) or 0
+                                else
+                                    exp = math.abs(tonumber(day_data.expenses) or 0)
+                                    inc = (tonumber(day_data.income) or 0) + exp
+                                end
+                            end
+
+                            total_income_period = total_income_period + inc
+                            total_expenses_period = total_expenses_period + exp
+                            if inc > max_value then max_value = inc end
+                            if exp > max_value then max_value = exp end
+
+                            table.insert(chart_data, { date = date_str, short = short_str, income = inc, expenses = exp })
                         end
                     end
-                    if not date_exists[today_str] then table.insert(all_dates, today_str) end
 
-                    table.sort(all_dates, function(a, b) return getDateNumber(a) < getDateNumber(b) end)
+                    -- === ОТРИСОВКА СЕТКИ И ОСЕЙ (Скрины 2, 3, 4) ===
+                    local draw_list = imgui.GetWindowDrawList()
+                    local canvas_pos = imgui.GetCursorScreenPos()
+                    local canvas_w, canvas_h = cWinW - 190, 130
 
-                    for _, date_str in ipairs(all_dates) do
-                        local inc = 0
-                        local exp = 0
+                    draw_list:AddRectFilled(canvas_pos, imgui.ImVec2(canvas_pos.x + canvas_w, canvas_pos.y + canvas_h), imgui.GetColorU32Vec4(imgui.ImVec4(0.06, 0.08, 0.11, 1.00)), 6.0)
+                    draw_list:AddRect(canvas_pos, imgui.ImVec2(canvas_pos.x + canvas_w, canvas_pos.y + canvas_h), imgui.GetColorU32Vec4(imgui.ImVec4(0.18, 0.22, 0.30, 1.00)), 6.0)
 
-                        if date_str == today_str then
-                            inc = today_gross
-                            exp = math.abs(tonumber(session_stats.expenses_accumulated) or 0)
-                        else
-                            local day_data = session_stats.daily_history and session_stats.daily_history[date_str]
-                            if day_data then
-                                exp = math.abs(tonumber(day_data.expenses) or 0)
-                                inc = (tonumber(day_data.income) or 0) + exp
+                    local margin_left = 65
+                    local margin_bottom = 20
+                    local plot_w = canvas_w - margin_left - 10
+                    local plot_h = canvas_h - margin_bottom - 15
+
+                    -- Шкала по оси Y ($)
+                    for g = 0, 4 do
+                        local y = canvas_pos.y + 8 + (plot_h * (g / 4))
+                        draw_list:AddLine(imgui.ImVec2(canvas_pos.x + margin_left, y), imgui.ImVec2(canvas_pos.x + canvas_w - 10, y), imgui.GetColorU32Vec4(imgui.ImVec4(0.15, 0.18, 0.25, 0.60)))
+                        local grid_val = max_value * (1 - (g / 4))
+                        draw_list:AddText(imgui.ImVec2(canvas_pos.x + 4, y - 6), imgui.GetColorU32Vec4(imgui.ImVec4(0.50, 0.55, 0.63, 1.00)), u8("$" .. formatNumber(grid_val)))
+                    end
+
+                    local num_points = math.max(1, #chart_data)
+                    local bar_gap = plot_w / num_points
+                    local mouse_pos = imgui.GetMousePos()
+                    local y1_base = canvas_pos.y + 8 + plot_h
+
+                    -- === РЕНДЕР 3-Х ВИДОВ ГРАФИКА ===
+
+                    -- 1. СТОЛБЦЫ (СКРИНШОТ №2)
+                    if chart_view_mode[0] == 0 then
+                        local bar_w = math.max(bar_gap * 0.55, 4)
+                        for idx, item in ipairs(chart_data) do
+                            local x_center = canvas_pos.x + margin_left + ((idx - 0.5) * bar_gap)
+                            local x0 = x_center - (bar_w / 2)
+                            local x1 = x_center + (bar_w / 2)
+
+                            local income_ratio = math.min(1.0, math.max(0.0, item.income / max_value))
+                            local income_bar_h = math.max(plot_h * income_ratio, item.income > 0 and 3 or 0)
+                            local income_y0 = y1_base - income_bar_h
+
+                            local is_hovered = (mouse_pos.x >= x0 and mouse_pos.x <= x1 and mouse_pos.y >= (canvas_pos.y + 8) and mouse_pos.y <= y1_base)
+                            local income_bar_col = is_hovered and imgui.GetColorU32Vec4(imgui.ImVec4(0.98, 0.78, 0.20, 1.00)) or imgui.GetColorU32Vec4(imgui.ImVec4(0.18, 0.80, 0.44, 0.85))
+                            if item.income == 0 then income_bar_col = imgui.GetColorU32Vec4(imgui.ImVec4(0.25, 0.28, 0.35, 0.40)) end
+
+                            if income_bar_h > 0 then
+                                draw_list:AddRectFilled(imgui.ImVec2(x0, income_y0), imgui.ImVec2(x1, y1_base), income_bar_col, 3.0, 1 + 2)
+                            end
+
+                            local expenses_ratio = math.min(1.0, math.max(0.0, item.expenses / max_value))
+                            local expenses_bar_h = math.max(plot_h * expenses_ratio, item.expenses > 0 and 3 or 0)
+                            local expenses_y0 = y1_base - expenses_bar_h
+                            local expenses_bar_col = imgui.GetColorU32Vec4(imgui.ImVec4(0.95, 0.26, 0.26, 0.65))
+
+                            if expenses_bar_h > 0 then
+                                draw_list:AddRectFilled(imgui.ImVec2(x0, expenses_y0), imgui.ImVec2(x1, y1_base), expenses_bar_col, 3.0, 1 + 2)
+                            end
+
+                            draw_list:AddText(imgui.ImVec2(x_center - 10, y1_base + 3), imgui.GetColorU32Vec4(imgui.ImVec4(0.60, 0.65, 0.73, 1.00)), item.short)
+
+                            if is_hovered then
+                                imgui.BeginTooltip()
+                                imgui.TextColored(imgui.ImVec4(0.95, 0.76, 0.18, 1.00), u8("Дата: " .. item.date))
+                                imgui.TextColored(imgui.ImVec4(0.25, 0.85, 0.48, 1.00), u8(cat_mode == 1 and "Продажа BTC: $" or "Доход: $") .. formatNumber(item.income))
+                                imgui.TextColored(imgui.ImVec4(0.95, 0.26, 0.26, 1.00), u8(cat_mode == 1 and "Траты майнинга: $" or "Траты: $") .. formatNumber(item.expenses))
+                                imgui.EndTooltip()
                             end
                         end
 
-                        total_income_period = total_income_period + inc
-                        total_expenses_period = total_expenses_period + exp
-                        if inc > max_value then max_value = inc end
-                        if exp > max_value then max_value = exp end
-
-                        table.insert(chart_data, { date = date_str, short = date_str:sub(1, 5), income = inc, expenses = exp })
-                    end
-                else
-                    for i = period - 1, 0, -1 do
-                        local ts = os.time() - (i * 86400)
-                        local date_str = os.date("%d.%m.%Y", ts)
-                        local short_str = os.date("%d.%m", ts)
-                        local inc = 0
-                        local exp = 0
-
-                        if date_str == today_str then
-                            inc = today_gross
-                            exp = math.abs(tonumber(session_stats.expenses_accumulated) or 0)
-                        elseif session_stats.daily_history and session_stats.daily_history[date_str] then
-                            local day_data = session_stats.daily_history[date_str]
-                            exp = math.abs(tonumber(day_data.expenses) or 0)
-                            inc = (tonumber(day_data.income) or 0) + exp
+                    -- 2. ДВЕ ЛИНИИ: ДОХОД И ТРАТЫ (СКРИНШОТ №3)
+                    elseif chart_view_mode[0] == 1 then
+                        local inc_points = {}
+                        local exp_points = {}
+                        for idx, item in ipairs(chart_data) do
+                            local x = canvas_pos.x + margin_left + ((idx - 0.5) * bar_gap)
+                            local inc_ratio = math.min(1.0, math.max(0.0, item.income / max_value))
+                            local exp_ratio = math.min(1.0, math.max(0.0, item.expenses / max_value))
+                            table.insert(inc_points, imgui.ImVec2(x, y1_base - (plot_h * inc_ratio)))
+                            table.insert(exp_points, imgui.ImVec2(x, y1_base - (plot_h * exp_ratio)))
                         end
 
-                        total_income_period = total_income_period + inc
-                        total_expenses_period = total_expenses_period + exp
-                        if inc > max_value then max_value = inc end
-                        if exp > max_value then max_value = exp end
+                        local col_inc_line = imgui.GetColorU32Vec4(imgui.ImVec4(0.18, 0.80, 0.44, 1.00))
+                        local col_exp_line = imgui.GetColorU32Vec4(imgui.ImVec4(0.95, 0.26, 0.26, 1.00))
 
-                        table.insert(chart_data, { date = date_str, short = short_str, income = inc, expenses = exp })
-                    end
-                end
-
-                local draw_list = imgui.GetWindowDrawList()
-                local canvas_pos = imgui.GetCursorScreenPos()
-                local canvas_w, canvas_h = cWinW - 190, 150
-
-                draw_list:AddRectFilled(canvas_pos, imgui.ImVec2(canvas_pos.x + canvas_w, canvas_pos.y + canvas_h), imgui.GetColorU32Vec4(imgui.ImVec4(0.06, 0.08, 0.11, 1.00)), 6.0)
-                draw_list:AddRect(canvas_pos, imgui.ImVec2(canvas_pos.x + canvas_w, canvas_pos.y + canvas_h), imgui.GetColorU32Vec4(imgui.ImVec4(0.18, 0.22, 0.30, 1.00)), 6.0)
-
-                local margin_left = 65
-                local margin_bottom = 22
-                local plot_w = canvas_w - margin_left - 10
-                local plot_h = canvas_h - margin_bottom - 15
-
-                for g = 0, 4 do
-                    local y = canvas_pos.y + 8 + (plot_h * (g / 4))
-                    draw_list:AddLine(imgui.ImVec2(canvas_pos.x + margin_left, y), imgui.ImVec2(canvas_pos.x + canvas_w - 10, y), imgui.GetColorU32Vec4(imgui.ImVec4(0.15, 0.18, 0.25, 0.60)))
-                    local grid_val = max_value * (1 - (g / 4))
-                    draw_list:AddText(imgui.ImVec2(canvas_pos.x + 4, y - 6), imgui.GetColorU32Vec4(imgui.ImVec4(0.50, 0.55, 0.63, 1.00)), u8("$" .. formatNumber(grid_val)))
-                end
-
-                local num_points = math.max(1, #chart_data)
-                local bar_gap = plot_w / num_points
-                local mouse_pos = imgui.GetMousePos()
-                local y1_base = canvas_pos.y + 8 + plot_h
-
-                               if chart_view_mode[0] == 0 then
-                    -- === РЕЖИМ 1: ОБЩИЙ СТОЛБЕЦ (Доход/Траты) ===
-                    local bar_w = math.max(bar_gap * 0.55, 3)
-
-                    for idx, item in ipairs(chart_data) do
-                        local x_center = canvas_pos.x + margin_left + ((idx - 0.5) * bar_gap)
-                        local x0 = x_center - (bar_w / 2)
-                        local x1 = x_center + (bar_w / 2)
-
-                        local income_ratio = math.min(1.0, math.max(0.0, item.income / max_value))
-                        local income_bar_h = math.max(plot_h * income_ratio, item.income > 0 and 3 or 0)
-                        local income_y0 = y1_base - income_bar_h
-
-                        local is_hovered = (mouse_pos.x >= x0 and mouse_pos.x <= x1 and mouse_pos.y >= (canvas_pos.y + 8) and mouse_pos.y <= y1_base)
-                        local income_bar_col = is_hovered and imgui.GetColorU32Vec4(imgui.ImVec4(0.98, 0.78, 0.20, 1.00)) or imgui.GetColorU32Vec4(imgui.ImVec4(0.18, 0.80, 0.44, 0.85))
-                        if item.income == 0 then income_bar_col = imgui.GetColorU32Vec4(imgui.ImVec4(0.25, 0.28, 0.35, 0.40)) end
-
-                        if income_bar_h > 0 then
-                            draw_list:AddRectFilled(imgui.ImVec2(x0, income_y0), imgui.ImVec2(x1, y1_base), income_bar_col, 3.0, 1 + 2)
+                        for i = 1, #inc_points - 1 do
+                            draw_list:AddLine(inc_points[i], inc_points[i+1], col_inc_line, 2.0)
+                            draw_list:AddLine(exp_points[i], exp_points[i+1], col_exp_line, 2.0)
                         end
 
-                        local expenses_ratio = math.min(1.0, math.max(0.0, item.expenses / max_value))
-                        local expenses_bar_h = math.max(plot_h * expenses_ratio, item.expenses > 0 and 3 or 0)
-                        local expenses_y0 = y1_base - expenses_bar_h
-                        local expenses_bar_col = imgui.GetColorU32Vec4(imgui.ImVec4(0.95, 0.26, 0.26, 0.65))
+                        for idx, item in ipairs(chart_data) do
+                            local pt_inc = inc_points[idx]
+                            local pt_exp = exp_points[idx]
+                            draw_list:AddCircleFilled(pt_inc, 3.5, col_inc_line)
+                            draw_list:AddCircleFilled(pt_exp, 3.5, col_exp_line)
 
-                        if expenses_bar_h > 0 then
-                            draw_list:AddRectFilled(imgui.ImVec2(x0, expenses_y0), imgui.ImVec2(x1, y1_base), expenses_bar_col, 3.0, 1 + 2)
-                        end
+                            local x_min = pt_inc.x - (bar_gap / 2)
+                            local x_max = pt_inc.x + (bar_gap / 2)
+                            local is_hovered = (mouse_pos.x >= x_min and mouse_pos.x <= x_max and mouse_pos.y >= (canvas_pos.y + 8) and mouse_pos.y <= y1_base)
 
-                        if num_points <= 15 or (idx % math.ceil(num_points / 10) == 0) or idx == num_points then
-                            draw_list:AddText(imgui.ImVec2(x_center - 10, y1_base + 3), imgui.GetColorU32Vec4(imgui.ImVec4(0.60, 0.65, 0.73, 1.00)), item.short)
-                        end
+                            if is_hovered then
+                                draw_list:AddLine(imgui.ImVec2(pt_inc.x, canvas_pos.y + 8), imgui.ImVec2(pt_inc.x, y1_base), imgui.GetColorU32Vec4(imgui.ImVec4(1,1,1,0.25)), 1.0)
+                                imgui.BeginTooltip()
+                                imgui.TextColored(imgui.ImVec4(0.95, 0.76, 0.18, 1.00), u8("Дата: " .. item.date))
+                                imgui.TextColored(imgui.ImVec4(0.25, 0.85, 0.48, 1.00), u8(cat_mode == 1 and "Продажа BTC: $" or "Доход: $") .. formatNumber(item.income))
+                                imgui.TextColored(imgui.ImVec4(0.95, 0.26, 0.26, 1.00), u8(cat_mode == 1 and "Траты майнинга: $" or "Траты: $") .. formatNumber(item.expenses))
+                                imgui.EndTooltip()
+                            end
 
-                        if is_hovered then
-                            imgui.BeginTooltip()
-                            imgui.TextColored(imgui.ImVec4(0.95, 0.76, 0.18, 1.00), u8("Дата: " .. item.date))
-                            imgui.TextColored(imgui.ImVec4(0.25, 0.85, 0.48, 1.00), u8("Доход: $") .. formatNumber(item.income))
-                            imgui.TextColored(imgui.ImVec4(0.95, 0.26, 0.26, 1.00), u8("Траты: $") .. formatNumber(item.expenses))
-                            imgui.EndTooltip()
-                        end
-                    end
-                elseif chart_view_mode[0] == 1 then
-                    -- === РЕЖИМ 2: ЛИНЕЙНЫЙ ТРЕНД (Доход/Траты) ===
-                    local inc_points = {}
-                    local exp_points = {}
-
-                    for idx, item in ipairs(chart_data) do
-                        local x = canvas_pos.x + margin_left + ((idx - 0.5) * bar_gap)
-                        local inc_ratio = math.min(1.0, math.max(0.0, item.income / max_value))
-                        local exp_ratio = math.min(1.0, math.max(0.0, item.expenses / max_value))
-
-                        table.insert(inc_points, imgui.ImVec2(x, y1_base - (plot_h * inc_ratio)))
-                        table.insert(exp_points, imgui.ImVec2(x, y1_base - (plot_h * exp_ratio)))
-                    end
-
-                    local col_inc_line = imgui.GetColorU32Vec4(imgui.ImVec4(0.18, 0.80, 0.44, 1.00))
-                    local col_exp_line = imgui.GetColorU32Vec4(imgui.ImVec4(0.95, 0.26, 0.26, 1.00))
-
-                    for i = 1, #inc_points - 1 do
-                        draw_list:AddLine(inc_points[i], inc_points[i+1], col_inc_line, 2.0)
-                        draw_list:AddLine(exp_points[i], exp_points[i+1], col_exp_line, 2.0)
-                    end
-
-                    for idx, item in ipairs(chart_data) do
-                        local pt_inc = inc_points[idx]
-                        local pt_exp = exp_points[idx]
-
-                        draw_list:AddCircleFilled(pt_inc, 3.5, col_inc_line)
-                        draw_list:AddCircleFilled(pt_exp, 3.5, col_exp_line)
-
-                        local x_min = pt_inc.x - (bar_gap / 2)
-                        local x_max = pt_inc.x + (bar_gap / 2)
-                        local is_hovered = (mouse_pos.x >= x_min and mouse_pos.x <= x_max and mouse_pos.y >= (canvas_pos.y + 8) and mouse_pos.y <= y1_base)
-
-                        if is_hovered then
-                            draw_list:AddLine(imgui.ImVec2(pt_inc.x, canvas_pos.y + 8), imgui.ImVec2(pt_inc.x, y1_base), imgui.GetColorU32Vec4(imgui.ImVec4(1,1,1,0.25)), 1.0)
-                            draw_list:AddCircleFilled(pt_inc, 5.0, imgui.GetColorU32Vec4(imgui.ImVec4(0.98, 0.78, 0.20, 1.00)))
-                            draw_list:AddCircleFilled(pt_exp, 5.0, imgui.GetColorU32Vec4(imgui.ImVec4(0.98, 0.78, 0.20, 1.00)))
-
-                            imgui.BeginTooltip()
-                            imgui.TextColored(imgui.ImVec4(0.95, 0.76, 0.18, 1.00), u8("Дата: " .. item.date))
-                            imgui.TextColored(imgui.ImVec4(0.25, 0.85, 0.48, 1.00), u8("Доход: $") .. formatNumber(item.income))
-                            imgui.TextColored(imgui.ImVec4(0.95, 0.26, 0.26, 1.00), u8("Траты: $") .. formatNumber(item.expenses))
-                            imgui.EndTooltip()
-                        end
-
-                        if num_points <= 15 or (idx % math.ceil(num_points / 10) == 0) or idx == num_points then
                             draw_list:AddText(imgui.ImVec2(pt_inc.x - 10, y1_base + 3), imgui.GetColorU32Vec4(imgui.ImVec4(0.60, 0.65, 0.73, 1.00)), item.short)
                         end
-                    end
-                elseif chart_view_mode[0] == 2 then
-                    -- === РЕЖИМ 3: ЧИСТЫЙ ДОХОД (ОДНА ЛИНИЯ) ===
-                    local net_points = {}
-                    local max_net_val = 1
-                    local min_net_val = 0
 
-                    for idx, item in ipairs(chart_data) do
-                        local net_val = item.income - item.expenses
-                        if net_val > max_net_val then max_net_val = net_val end
-                        if net_val < min_net_val then min_net_val = net_val end
-                    end
-                    
-                    local y_range = math.max(1, max_net_val - min_net_val)
-                    
-                    -- Сетка Y для этого режима (чистый доход)
-                    for g = 0, 4 do
-                        local y_grid_pos = canvas_pos.y + 8 + (plot_h * (g / 4))
-                        local grid_val = min_net_val + (y_range * (1 - (g / 4)))
-                        draw_list:AddLine(imgui.ImVec2(canvas_pos.x + margin_left, y_grid_pos), imgui.ImVec2(canvas_pos.x + canvas_w - 10, y_grid_pos), imgui.GetColorU32Vec4(imgui.ImVec4(0.15, 0.18, 0.25, 0.60)))
-                        draw_list:AddText(imgui.ImVec2(canvas_pos.x + 4, y_grid_pos - 6), imgui.GetColorU32Vec4(imgui.ImVec4(0.50, 0.55, 0.63, 1.00)), u8("$" .. formatNumber(grid_val)))
-                    end
-
-                    for idx, item in ipairs(chart_data) do
-                        local x = canvas_pos.x + margin_left + ((idx - 0.5) * bar_gap)
-                        local net_val = item.income - item.expenses
-                        local net_ratio = math.min(1.0, math.max(0.0, (net_val - min_net_val) / y_range))
-
-                        table.insert(net_points, imgui.ImVec2(x, y1_base - (plot_h * net_ratio)))
-                    end
-
-                    local col_net_line = imgui.GetColorU32Vec4(imgui.ImVec4(0.98, 0.78, 0.20, 1.00)) -- Золотая линия
-
-                    for i = 1, #net_points - 1 do
-                        draw_list:AddLine(net_points[i], net_points[i+1], col_net_line, 2.5)
-                    end
-
-                    for idx, item in ipairs(chart_data) do
-                        local pt_net = net_points[idx]
-                        draw_list:AddCircleFilled(pt_net, 4.0, col_net_line)
-
-                        local x_min = pt_net.x - (bar_gap / 2)
-                        local x_max = pt_net.x + (bar_gap / 2)
-                        local is_hovered = (mouse_pos.x >= x_min and mouse_pos.x <= x_max and mouse_pos.y >= (canvas_pos.y + 8) and mouse_pos.y <= y1_base)
-
-                        if is_hovered then
-                            draw_list:AddLine(imgui.ImVec2(pt_net.x, canvas_pos.y + 8), imgui.ImVec2(pt_net.x, y1_base), imgui.GetColorU32Vec4(imgui.ImVec4(1,1,1,0.25)), 1.0)
-                            draw_list:AddCircleFilled(pt_net, 6.0, imgui.GetColorU32Vec4(imgui.ImVec4(1.00, 0.90, 0.40, 1.00)))
-
-                            imgui.BeginTooltip()
-                            imgui.TextColored(imgui.ImVec4(0.95, 0.76, 0.18, 1.00), u8("Дата: " .. item.date))
+                    -- 3. ОБЩИЙ ЛИНЕЙНЫЙ ЖЕЛТЫЙ ГРАФИК (СКРИНШОТ №4)
+                    elseif chart_view_mode[0] == 2 then
+                        local net_points = {}
+                        for idx, item in ipairs(chart_data) do
+                            local x = canvas_pos.x + margin_left + ((idx - 0.5) * bar_gap)
                             local net_val = item.income - item.expenses
-                            local col_net = net_val >= 0 and imgui.ImVec4(0.25, 0.85, 0.48, 1.00) or imgui.ImVec4(0.95, 0.26, 0.26, 1.00)
-                            imgui.TextColored(col_net, u8("Чистый доход: $") .. formatNumber(net_val))
-                            imgui.EndTooltip()
+                            local net_ratio = math.min(1.0, math.max(0.0, net_val / max_value))
+                            table.insert(net_points, imgui.ImVec2(x, y1_base - (plot_h * net_ratio)))
                         end
 
-                        if num_points <= 15 or (idx % math.ceil(num_points / 10) == 0) or idx == num_points then
-                            draw_list:AddText(imgui.ImVec2(pt_net.x - 10, y1_base + 3), imgui.GetColorU32Vec4(imgui.ImVec4(0.60, 0.65, 0.73, 1.00)), item.short)
+                        local col_yellow_line = imgui.GetColorU32Vec4(imgui.ImVec4(0.95, 0.76, 0.18, 1.00))
+
+                        for i = 1, #net_points - 1 do
+                            draw_list:AddLine(net_points[i], net_points[i+1], col_yellow_line, 2.5)
+                        end
+
+                        for idx, item in ipairs(chart_data) do
+                            local pt = net_points[idx]
+                            draw_list:AddCircleFilled(pt, 4.0, col_yellow_line)
+
+                            local x_min = pt.x - (bar_gap / 2)
+                            local x_max = pt.x + (bar_gap / 2)
+                            local is_hovered = (mouse_pos.x >= x_min and mouse_pos.x <= x_max and mouse_pos.y >= (canvas_pos.y + 8) and mouse_pos.y <= y1_base)
+
+                            if is_hovered then
+                                draw_list:AddLine(imgui.ImVec2(pt.x, canvas_pos.y + 8), imgui.ImVec2(pt.x, y1_base), imgui.GetColorU32Vec4(imgui.ImVec4(1,1,1,0.25)), 1.0)
+                                imgui.BeginTooltip()
+                                imgui.TextColored(imgui.ImVec4(0.95, 0.76, 0.18, 1.00), u8("Дата: " .. item.date))
+                                local net = item.income - item.expenses
+                                imgui.TextColored(net >= 0 and imgui.ImVec4(0.25, 0.85, 0.48, 1.00) or imgui.ImVec4(0.95, 0.26, 0.26, 1.00), u8("Чистый доход: $") .. formatNumber(net))
+                                imgui.EndTooltip()
+                            end
+
+                            draw_list:AddText(imgui.ImVec2(pt.x - 10, y1_base + 3), imgui.GetColorU32Vec4(imgui.ImVec4(0.60, 0.65, 0.73, 1.00)), item.short)
                         end
                     end
-                end -- Конец if/elseif для режимов графика
 
-                imgui.Dummy(imgui.ImVec2(0, canvas_h + 4))
+                    imgui.Dummy(imgui.ImVec2(0, canvas_h + 2))
 
-                imgui.TextColored(imgui.ImVec4(0.18, 0.80, 0.44, 1.00), getIcon("MONEY_BILL_WAVE", "") .. u8("Доходы: $") .. formatNumber(total_income_period))
-                imgui.TextColored(imgui.ImVec4(0.95, 0.26, 0.26, 1.00), getIcon("TRASH", "") .. u8("Траты: -$") .. formatNumber(total_expenses_period))
+                    -- Текстовые данные под графиком
+                    if cat_mode == 1 then
+                        imgui.TextColored(imgui.ImVec4(0.18, 0.80, 0.44, 1.00), getIcon("COINS", "") .. u8("Продажа BTC (Майнинг): $") .. formatNumber(total_income_period))
+                        imgui.TextColored(imgui.ImVec4(0.95, 0.26, 0.26, 1.00), getIcon("TRASH", "") .. u8("Траты (Свет + Охлаждайки): -$") .. formatNumber(total_expenses_period))
+                    else
+                        imgui.TextColored(imgui.ImVec4(0.18, 0.80, 0.44, 1.00), getIcon("MONEY_BILL_WAVE", "") .. u8("Доходы: $") .. formatNumber(total_income_period))
+                        imgui.TextColored(imgui.ImVec4(0.95, 0.26, 0.26, 1.00), getIcon("TRASH", "") .. u8("Траты: -$") .. formatNumber(total_expenses_period))
+                    end
 
-                imgui.Dummy(imgui.ImVec2(0, 1))
+                    imgui.Dummy(imgui.ImVec2(0, 1))
+                    imgui.Separator()
+                    imgui.Dummy(imgui.ImVec2(0, 1))
+
+                    local net_result = total_income_period - total_expenses_period
+                    local is_plus = (net_result >= 0)
+                    local res_color = is_plus and imgui.ImVec4(0.18, 0.80, 0.44, 1.00) or imgui.ImVec4(0.95, 0.26, 0.26, 1.00)
+                    
+                    local status_text = is_plus and "В плюсе:" or "В минусе:"
+                    if cat_mode == 1 then
+                        status_text = is_plus and "Майнинг окупается (плюс):" or "Майнинг в минусе:"
+                    end
+
+                    imgui.TextColored(imgui.ImVec4(0.95, 0.76, 0.18, 1.00), u8("Итог за выбранный период:"))
+                    imgui.TextColored(res_color, u8(status_text))
+                    imgui.TextColored(res_color, u8((is_plus and "+$" or "-$") .. formatNumber(math.abs(net_result))))
+                end
+
+                -- Кнопки категорий снизу
+                imgui.SetCursorPosY(cWinH - 130)
                 imgui.Separator()
-                imgui.Dummy(imgui.ImVec2(0, 1))
+                imgui.Dummy(imgui.ImVec2(0, 2))
 
-                local net_result = total_income_period - total_expenses_period
-                local is_plus = (net_result >= 0)
-                local res_color = is_plus and imgui.ImVec4(0.18, 0.80, 0.44, 1.00) or imgui.ImVec4(0.95, 0.26, 0.26, 1.00)
-                local res_status = is_plus and "В плюсе:" or "В минусе:"
-                local res_prefix = is_plus and "+$" or "-$"
+                local function drawCategoryBtn(label, mode_id, btn_w)
+                    local is_selected = (chart_category_mode[0] == mode_id)
+                    if is_selected then
+                        imgui.PushStyleColor(imgui.Col.Button, imgui.ImVec4(0.18, 0.80, 0.44, 0.70))
+                        imgui.PushStyleColor(imgui.Col.ButtonHovered, imgui.ImVec4(0.18, 0.80, 0.44, 0.90))
+                    else
+                        imgui.PushStyleColor(imgui.Col.Button, imgui.ImVec4(0.18, 0.20, 0.26, 0.80))
+                        imgui.PushStyleColor(imgui.Col.ButtonHovered, imgui.ImVec4(0.24, 0.26, 0.33, 1.00))
+                    end
+                    if imgui.Button(u8(label) .. "##cat_" .. mode_id, imgui.ImVec2(btn_w, 24)) then
+                        chart_category_mode[0] = mode_id
+                    end
+                    imgui.PopStyleColor(2)
+                end
 
-                imgui.TextColored(imgui.ImVec4(0.95, 0.76, 0.18, 1.00), u8("Итог за выбранный период:"))
-                imgui.TextColored(res_color, u8(res_status))
-                imgui.TextColored(res_color, u8(res_prefix .. formatNumber(math.abs(net_result))))
+                local cat_btn_w = 110
+                drawCategoryBtn("Общее", 0, cat_btn_w)
+                imgui.SameLine()
+                drawCategoryBtn("Майнинг", 1, cat_btn_w)
+                imgui.SameLine()
+                drawCategoryBtn("Торговля", 2, cat_btn_w)
+                imgui.SameLine()
+                drawCategoryBtn("Бизнес", 3, cat_btn_w)
 
             imgui.EndChild()
 
-            imgui.Dummy(imgui.ImVec2(0, 4))
+
+
+
+
+            imgui.Dummy(imgui.ImVec2(0, 0))
             
             imgui.PushStyleColor(imgui.Col.Button, imgui.ImVec4(0.18, 0.20, 0.26, 0.80))
             imgui.PushStyleColor(imgui.Col.ButtonHovered, imgui.ImVec4(0.24, 0.26, 0.33, 1.00))
@@ -2928,6 +3024,60 @@ function samp.onServerMessage(color, text)
     if not text then return end
 
     local cleanText = text:gsub("{%x%x%x%x%x%x}", "")
+	
+	
+	    -- === [МАЙНИНГ] ПЕРЕХВАТ ОПЛАТЫ ЭЛЕКТРОЭНЕРГИИ ===
+    -- Пример: [Информация] Вы успешно пополнили счёт дома за электроэнергию на 28.640.
+    -- === [МАЙНИНГ] ПЕРЕХВАТ ОПЛАТЫ ЭЛЕКТРОЭНЕРГИИ ===
+    -- Пример 1: [Информация] Вы успешно пополнили счёт дома за электроэнергию на 28.640.
+    -- Пример 2 (VC): [Информация] Вы успешно пополнили счёт дома за электроэнергию на ??57.280.
+    -- === [МАЙНИНГ] ПЕРЕХВАТ ОПЛАТЫ ЭЛЕКТРОЭНЕРГИИ (БЕЗ УМНОЖЕНИЯ) ===
+    -- Пример: [Информация] Вы успешно пополнили счёт дома за электроэнергию на $ 300.000.
+    if cleanText:find("Вы успешно пополнили") and cleanText:find("электроэнергию") then
+        local sum_str = cleanText:match("электроэнергию на%s*[^%d]*(%d[%d%.,]*)")
+                     or cleanText:match("на%s*[^%d]*(%d[%d%.,]*)")
+                     
+        if sum_str then
+            local val = parse_numeric_value(sum_str)
+            if val > 0 then
+                -- Записываем ровно ту сумму, которая в чате (без x136)
+                session_stats.mining_electricity = (session_stats.mining_electricity or 0) + val
+                session_stats.mining_expenses = (session_stats.mining_expenses or 0) + val
+                session_stats.expenses_accumulated = (session_stats.expenses_accumulated or 0) + val
+                
+                -- Запись в Историю (вкладка 6)
+                add_history_log("Майнинг", "Оплата электроэнергии дома", "-$" .. formatNumber(val), true)
+                save_stats_to_file()
+                
+                sampAddChatMessage("{00FF00}[Script TM] Успешно учтена оплата электроэнергии: {FFFFFF}$" .. formatNumber(val), -1)
+            end
+        end
+    end
+
+    -- === [МАЙНИНГ] ПЕРЕХВАТ ПОКУПКИ ОХЛАЖДАЮЩЕЙ ЖИДКОСТИ (БЕЗ УМНОЖЕНИЯ) ===
+    if cleanText:find("Вы успешно купили") and cleanText:find("Охлаждающая жидкость для видеокарты") then
+        local qty_str = cleanText:match("%((%d+)%s*шт%.%)") or "1"
+        local qty = tonumber(qty_str) or 1
+        
+        local price_str = cleanText:match("за%s*[^%d]*(%d[%d%.,]*)")
+        if price_str then
+            local total_price = parse_numeric_value(price_str)
+            if total_price > 0 then
+                -- Записываем ровно точное значение (без x136)
+                session_stats.mining_coolants = (session_stats.mining_coolants or 0) + total_price
+                session_stats.mining_expenses = (session_stats.mining_expenses or 0) + total_price
+                session_stats.expenses_accumulated = (session_stats.expenses_accumulated or 0) + total_price
+                
+                -- Запись в Историю (вкладка 6)
+                add_history_log("Майнинг", "Купил охлаждайку ("..qty.." шт.)", "-$" .. formatNumber(total_price), true)
+                save_stats_to_file()
+                
+                sampAddChatMessage("{00FF00}[Script TM] Учтена покупка охлаждаек ("..qty.." шт.): {FFFFFF}$" .. formatNumber(total_price), -1)
+            end
+        end
+    end
+	
+	
     -- === ОБРАБОТКА НАЧИСЛЕНИЯ AZ-COINS ИЗ ИНВЕНТАРЯ И ЛОТЕРЕИ ===
     if cleanText:find("Вам начислено") and cleanText:find("AZ%-Coins") then
         local az_str = cleanText:match("Вам начислено%s+(%d[%d%.,%s]*)")
