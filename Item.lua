@@ -46,7 +46,7 @@ local stats_file_path = script_folder .. "\\ScriptTM_stats.json"
 local ITEMS_DB_URL = "https://raw.githubusercontent.com/dmashmakov2000-coder/item11/main/items.json"
 local LOGO_URL = "https://raw.githubusercontent.com/dmashmakov2000-coder/item11/main/logo1.png"
 
-local SCRIPT_VERSION = "0.3.5"
+local SCRIPT_VERSION = "0.3.6"
 local UPDATE_URL = "https://raw.githubusercontent.com/dmashmakov2000-coder/item11/main/Item.lua"
 local CFG_FILENAME = 'Script [TM].ini'
 
@@ -54,15 +54,9 @@ local ANTIBLOCK_URL = "https://tg.bakh.us"
 local DEFAULT_API = "https://api.telegram.org"
 local wasOpenedByCommand = false
 
-local UPDATE_INFO = [[
-0.3.5
-Добавил разрел Майнинга
-В нем пожно посмотреть раздел графы
-Прибыли с майнига
-Затраты на охлождайки
-затраты на электро компанию
-и итогорый результат прибыли
-]]
+local UPDATE_INFO = [[исправлено получение предметов в сторедж
+теперь сообщения вновь приходят 
+новый спписок предметов будет обновлен на днях]]
 
 -- Точный IP-адрес Vice City
 local VC_IP = "80.66.82.147"
@@ -616,30 +610,45 @@ function loadItemsDatabase()
             
             local raw_data = nil
             
+            -- Попытка загрузить как Lua-таблицу (старый формат)
             if content:find("local%s+items_name%s*=") or content:find("%[%s*%d+%s*%]%s*=") then
                 local clean_lua = content:gsub("local%s+items_name%s*=%s*", "return ")
                 local fn, err = load(clean_lua)
                 if fn then
                     local ok, res = pcall(fn)
                     if ok and type(res) == "table" then raw_data = res end
+                else
+                    sampAddChatMessage("{FF0000}[TM Debug] Ошибка при загрузке items.json как Lua: " .. tostring(err), -1)
                 end
             else
+                -- Попытка загрузить как JSON (новый/стандартный формат)
                 local ok, decoded = pcall(json.decode, content)
-                if ok then raw_data = decoded end
+                if ok then raw_data = decoded
+                else sampAddChatMessage("{FF0000}[TM Debug] Ошибка при загрузке items.json как JSON: " .. tostring(decoded), -1)
+                end
             end
 
             if raw_data then
                 items_name = {}
+                local count = 0
                 for k, v in pairs(raw_data) do
                     items_name[tostring(k)] = to_cp1251(v)
+                    count = count + 1
                 end
                 items_loaded = true
+                sampAddChatMessage("{00FF00}[TM Debug] items.json успешно загружен, предметов: " .. count, -1)
+            else
+                sampAddChatMessage("{FF0000}[TM Debug] items.json загружен, но данные не распознаны.", -1)
             end
+        else
+            sampAddChatMessage("{FF0000}[TM Debug] Не удалось открыть items.json для чтения.", -1)
         end
     else
+        sampAddChatMessage("{FF0000}[TM Debug] items.json не найден. Загружаю с сервера.", -1)
         downloadItemsDatabase()
     end
 end
+
 
 function downloadItemsDatabase()
     if not requests_ok then return end
@@ -953,6 +962,7 @@ local default_config = {
         chat = '',
         token = '',
         useAntiBlock = true,
+		  skipped_version = '',
         itemAdding = false,
         sendUnknownItems = false,
         shortMessage = false, 
@@ -1197,12 +1207,16 @@ function checkUpdate()
             local remote_info = response.text:match('local%s+UPDATE_INFO%s*=%s*%[%[(.-)%]%]')
 
             if remote_version and remote_version ~= SCRIPT_VERSION then
-                update_available = true
-                remote_version_text = remote_version
-                remote_update_info = remote_info or "Информация об изменениях отсутствует." 
-                show_update_popup[0] = true
-                window[0] = false
+                -- Проверяем, не пропускает ли пользователь именно эту версию
+                if cfg.config.skipped_version ~= remote_version then
+                    update_available = true
+                    remote_version_text = remote_version
+                    remote_update_info = remote_info or "Информация об изменениях отсутствует." 
+                    show_update_popup[0] = true
+                    window[0] = false
+                end
             end
+
         end
     end)
 end
@@ -1223,6 +1237,7 @@ local function saveConfig()
     cfg.config.autoWeeklyReport = autoWeeklyReport[0]
     cfg.config.autoMonthlyReport = autoMonthlyReport[0]
     cfg.config.autoMaxIncomeReport = autoMaxIncomeReport[0]
+	 cfg.config.skipped_version = cfg.config.skipped_version or ''
 
     pcall(inicfg.save, cfg, CFG_FILENAME)
 end
@@ -2841,9 +2856,9 @@ drawSidebarTab(6, "CLOCK_ROTATE_LEFT", "История") -- <-- ДОБАВЛЕНО
         imgui.PopStyleColor() 
     end
 
-    if show_update_popup[0] then
+        if show_update_popup[0] then
         imgui.SetNextWindowPos(imgui.ImVec2(resX / 2, resY / 2), imgui.Cond.Always, imgui.ImVec2(0.5, 0.5))
-        imgui.SetNextWindowSize(imgui.ImVec2(480, 330), imgui.Cond.Always)
+        imgui.SetNextWindowSize(imgui.ImVec2(480, 380), imgui.Cond.Always) -- Увеличили высоту окна под 3 кнопки
         imgui.PushStyleColor(imgui.Col.WindowBg, imgui.ImVec4(0.09, 0.11, 0.15, 1.00))
 
         if imgui.Begin('##UpdatePopup', nil, imgui.WindowFlags.NoTitleBar + imgui.WindowFlags.NoResize + imgui.WindowFlags.NoCollapse) then
@@ -2872,7 +2887,7 @@ drawSidebarTab(6, "CLOCK_ROTATE_LEFT", "История") -- <-- ДОБАВЛЕНО
             if font_loaded and fa_ok and fa.ARROW_RIGHT then
                 imgui.TextColored(imgui.ImVec4(0.95, 0.76, 0.18, 1.00), fa.ARROW_RIGHT)
             else
-                imgui.TextColored(imgui.ImVec4(0.95, 0.76, 0.18, 1.00), u8(" --> "))
+                imgui.TextColored(imgui.ImVec4(0.95, 0.76, 0.18, 1.00), u8(" --&gt; "))
             end
             imgui.SameLine()
             imgui.TextColored(imgui.ImVec4(0.60, 0.65, 0.73, 1.00), u8("Новая "))
@@ -2886,33 +2901,57 @@ drawSidebarTab(6, "CLOCK_ROTATE_LEFT", "История") -- <-- ДОБАВЛЕНО
             imgui.Dummy(imgui.ImVec2(0, 4))
 
             imgui.PushStyleColor(imgui.Col.FrameBg, imgui.ImVec4(0.06, 0.08, 0.11, 1.00))
-            imgui.BeginChild("##changelog", imgui.ImVec2(w_width - 30, 110), true)
+            imgui.BeginChild("##changelog", imgui.ImVec2(w_width - 30, 100), true)
                 local safe_update_info = tostring(remote_update_info or "Нет информации")
                 imgui.TextWrapped(u8(safe_update_info))
             imgui.EndChild()
             imgui.PopStyleColor()
 
             imgui.Dummy(imgui.ImVec2(0, 12))
-            local btn_w = (w_width - 40) / 2
+            
+            -- === КНОПКИ УПРАВЛЕНИЯ ОБНОВЛЕНИЕМ ===
+            local full_btn_w = w_width - 30
 
+            -- 1. Кнопка "Обновить сейчас" (Зеленая во всю ширину сверху)
             imgui.PushStyleColor(imgui.Col.Button, imgui.ImVec4(0.15, 0.45, 0.24, 1.00))
             imgui.PushStyleColor(imgui.Col.ButtonHovered, imgui.ImVec4(0.18, 0.55, 0.29, 1.00))
-            if imgui.Button(u8("Обновить сейчас"), imgui.ImVec2(btn_w, 35)) then
+            if imgui.Button(u8("Обновить сейчас"), imgui.ImVec2(full_btn_w, 32)) then
                 downloadAndInstallUpdate()
             end
             imgui.PopStyleColor(2)
 
-            imgui.SameLine()
+            imgui.Dummy(imgui.ImVec2(0, 4))
 
-            imgui.PushStyleColor(imgui.Col.Button, imgui.ImVec4(0.18, 0.20, 0.26, 1.00))
-            imgui.PushStyleColor(imgui.Col.ButtonHovered, imgui.ImVec4(0.24, 0.26, 0.33, 1.00))
-            if imgui.Button(u8("Напомнить позже"), imgui.ImVec2(btn_w, 35)) then
+            -- 2 нижние кнопки рядом ("Пропустить" и "Напомнить позже")
+            local half_btn_w = (full_btn_w - 6) / 2
+
+            -- Кнопка "Пропустить это обновление" (Красная / Серая)
+            imgui.PushStyleColor(imgui.Col.Button, imgui.ImVec4(0.50, 0.18, 0.18, 0.80))
+            imgui.PushStyleColor(imgui.Col.ButtonHovered, imgui.ImVec4(0.65, 0.22, 0.22, 1.00))
+            if imgui.Button(u8("Пропустить версию"), imgui.ImVec2(half_btn_w, 30)) then
+                cfg.config.skipped_version = remote_version_text
+                saveConfig()
                 show_update_popup[0] = false
+                show_arz_notify('info', 'Обновление', 'Вы пропустили это обновление.', 3000)
                 if wasOpenedByCommand then
                     window[0] = true
                     wasOpenedByCommand = false
                 end
             end
+            imgui.PopStyleColor(2)
+
+            imgui.SameLine()
+
+            -- Кнопка "Напомнить позже"
+            imgui.PushStyleColor(imgui.Col.Button, imgui.ImVec4(0.18, 0.20, 0.26, 1.00))
+            imgui.PushStyleColor(imgui.Col.ButtonHovered, imgui.ImVec4(0.24, 0.26, 0.33, 1.00))
+            if imgui.Button(u8("Напомнить позже"), imgui.ImVec2(half_btn_w, 30)) then
+                show_update_popup[0] = false
+                if wasOpenedByCommand then
+                    window[0] = true
+                    wasOpenedByCommand = false
+                end
+            end 
             imgui.PopStyleColor(2)
 
             imgui.EndGroup()
@@ -3207,24 +3246,42 @@ if cleanText:find("Вы успешно купили") and cleanText:find("за") then
 end
 
 
-
-
-    -- === ТОЛЬКО НОВЫЙ ПРЕДМЕТ В ХРАНИЛИЩЕ ===
-    if cleanText:find("%[Хранилище предметов%]") then
+    -- === ОБРАБОТКА ПОЛУЧЕНИЯ ПОСЫЛКИ В ПУНКТЕ ВЫДАЧИ ===
+    -- Пример сообщения: ?? В пункт выдачи пришла посылка item:123. Забрать: /storage
+       -- === ОБРАБОТКА ПОЛУЧЕНИЯ ПОСЫЛКИ В ПУНКТЕ ВЫДАЧИ ===
+    -- Триггер: В пункт выдачи пришла посылка item:номер.
+    if cleanText:find("В пункт выдачи пришла посылка") then
         local is_player_chat = cleanText:find("говорит:") or cleanText:find("сказал:") or cleanText:find("%[%d+%]%s*:")
+        if is_player_chat then return end
+
+        -- Извлекаем ID (поддерживаем оба формата на всякий случай)
+        local storageItemId = cleanText:match("item:(%d+)") or text:match(":item(%d+):")
         
-        if not is_player_chat then
-            local is_login_info = cleanText:find("У Вас есть предметы в хранилище") or cleanText:find("Местоположение:%s*/gps")
-            
-            if not is_login_info and cleanText:find("Добавлен новый предмет") then
-                if storage[0] then
-                    local storage_tag = cfg.config.storageEmoji ~= "emoji_none" and ("{" .. cfg.config.storageEmoji .. "} ") or ""
-                    sendTelegramMessage(storage_tag .. cleanText)
+        if storageItemId then
+            -- Используем твою рабочую систему получения имени
+            local name = getItemName(storageItemId)
+
+            -- Используем твою рабочую систему черного списка
+            if session_stats.ignored_items then
+                if session_stats.ignored_items[name] or session_stats.ignored_items[tostring(storageItemId)] then
+                    return -- Если в игноре, выходим
                 end
+            end
+
+            -- Отправка в Telegram
+            if storage[0] then
+                local storage_tag = cfg.config.storageEmoji ~= "emoji_none" and ("{" .. cfg.config.storageEmoji .. "} ") or ""
+                -- Формируем чистое сообщение без "Забрать: /storage"
+                local msg = storage_tag .. "В пункт выдачи пришла посылка: " .. name
+                sendTelegramMessage(msg)
             end
         end
         return 
     end
+
+
+
+
 
     -- === ОБРАБОТКА ПОЛУЧЕНИЯ ПРЕДМЕТОВ ===
     local itemId = text:match(":item(%d+):")
