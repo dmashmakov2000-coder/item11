@@ -46,7 +46,7 @@ local stats_file_path = script_folder .. "\\ScriptTM_stats.json"
 local ITEMS_DB_URL = "https://raw.githubusercontent.com/dmashmakov2000-coder/item11/main/items.json"
 local LOGO_URL = "https://raw.githubusercontent.com/dmashmakov2000-coder/item11/main/logo1.png"
 
-local SCRIPT_VERSION = "0.3.6"
+local SCRIPT_VERSION = "0.3.7"
 local UPDATE_URL = "https://raw.githubusercontent.com/dmashmakov2000-coder/item11/main/Item.lua"
 local CFG_FILENAME = 'Script [TM].ini'
 
@@ -54,8 +54,8 @@ local ANTIBLOCK_URL = "https://tg.bakh.us"
 local DEFAULT_API = "https://api.telegram.org"
 local wasOpenedByCommand = false
 
-local UPDATE_INFO = [[исправлено получение предметов в сторедж
-теперь сообщения вновь приходят 
+local UPDATE_INFO = [[Удалено отображение не понятных символов.
+Добавлена кнопка пропустить это обновление если оно вам не нужно
 новый спписок предметов будет обновлен на днях]]
 
 -- Точный IP-адрес Vice City
@@ -232,6 +232,18 @@ show_add_funds_modal = imgui.new.bool(false)
 add_funds_input = imgui.new.char[64]("")
 
 show_chart_window = imgui.new.bool(false)
+-- === Переменные окна ручной настройки финансов ===
+show_edit_finances_modal = imgui.new.bool(false)
+edit_fin_wage     = imgui.new.char[64]("")
+edit_fin_dep      = imgui.new.char[64]("")
+edit_fin_biz      = imgui.new.char[64]("")
+edit_fin_btc      = imgui.new.char[64]("")
+edit_fin_mine_exp = imgui.new.char[64]("")
+edit_fin_trade    = imgui.new.char[64]("")
+edit_fin_deal     = imgui.new.char[64]("")
+edit_fin_expenses = imgui.new.char[64]("")
+edit_fin_az       = imgui.new.char[64]("")
+
 show_goal_settings = imgui.new.bool(false)
 show_projection_pinned = imgui.new.bool(false)
 is_proj_window_hovered = false
@@ -1313,6 +1325,32 @@ function main()
         show_arz_notify('success', 'TM', 'Доход от продаж изменен!', 3000)
         sampAddChatMessage("{00FF00}[TM] Доход от продаж за сегодня установлен на: $" .. formatNumber(val), -1)
     end)
+    -- === НОВЫЕ КОМАНДЫ ДЛЯ МАЙНИНГА ===
+    sampRegisterChatCommand('tpmineexp', function(param)
+        if not param or param == "" then
+            sampAddChatMessage("{FF6347}[TM] Использование: /tpmineexp [сумма]", -1)
+            sampAddChatMessage("{FF6347}[TM] Траты на майнинг за сегодня: $" .. formatNumber(session_stats.mining_expenses_today or 0), -1)
+            return
+        end
+        local val = parse_numeric_value(param)
+        session_stats.mining_expenses_today = val
+        save_stats_to_file()
+        show_arz_notify('success', 'TM', 'Траты на майнинг изменены!', 3000)
+        sampAddChatMessage("{00FF00}[TM] Траты на майнинг за сегодня установлены на: $" .. formatNumber(val), -1)
+    end)
+
+    sampRegisterChatCommand('tpmineinc', function(param)
+        if not param or param == "" then
+            sampAddChatMessage("{FF6347}[TM] Использование: /tpmineinc [сумма]", -1)
+            sampAddChatMessage("{FF6347}[TM] Доход с майнинга за сегодня: $" .. formatNumber(session_stats.mining_income_today or 0), -1)
+            return
+        end
+        local val = parse_numeric_value(param)
+        session_stats.mining_income_today = val
+        save_stats_to_file()
+        show_arz_notify('success', 'TM', 'Доход с майнинга изменен!', 3000)
+        sampAddChatMessage("{00FF00}[TM] Доход с майнинга за сегодня установлен на: $" .. formatNumber(val), -1)
+    end)
 
     checkUpdate()
 
@@ -1447,7 +1485,8 @@ function modern_style()
     colors[imgui.Col.TextDisabled]     = imgui.ImVec4(0.50, 0.55, 0.63, 1.00)
 end
 
-imgui.OnFrame(function() return window[0] or show_update_popup[0] or show_emoji_selector_modal[0] or show_chart_window[0] or show_goal_settings[0] or show_add_funds_modal[0] end, function(player)
+imgui.OnFrame(function() return window[0] or show_update_popup[0] or show_emoji_selector_modal[0] or show_chart_window[0] or show_goal_settings[0] or show_add_funds_modal[0] or show_edit_finances_modal[0] end, function(player)
+
     local resX, resY = getScreenResolution()
  
     if window[0] then
@@ -1811,7 +1850,38 @@ drawSidebarTab(6, "CLOCK_ROTATE_LEFT", "История") -- <-- ДОБАВЛЕНО
                 imgui.Separator()
                 imgui.Dummy(imgui.ImVec2(0, 2))
 
-                imgui.TextColored(imgui.ImVec4(0.18, 0.80, 0.44, 1.00), getIcon("MONEY_BILL_WAVE", "") .. u8("Чистый баланс за сегодня:"))
+                               -- === КЛИКАБЕЛЬНЫЙ ЗНАЧОК ДОЛЛАРА ДЛЯ РЕДАКТИРОВАНИЯ ===
+                imgui.PushStyleColor(imgui.Col.Button, imgui.ImVec4(0, 0, 0, 0))
+                imgui.PushStyleColor(imgui.Col.ButtonHovered, imgui.ImVec4(0.18, 0.80, 0.44, 0.30))
+                imgui.PushStyleColor(imgui.Col.ButtonActive, imgui.ImVec4(0.18, 0.80, 0.44, 0.50))
+                imgui.PushStyleColor(imgui.Col.Text, imgui.ImVec4(0.18, 0.80, 0.44, 1.00))
+
+                if imgui.Button(getIcon("MONEY_BILL_WAVE", "$") .. "##open_fin_editor", imgui.ImVec2(26, 24)) then
+                    -- Заполняем поля текущими значениями из session_stats
+                    ffi.copy(edit_fin_wage, tostring(session_stats.wages_accumulated or 0))
+                    ffi.copy(edit_fin_dep, tostring(session_stats.dep_growth or 0))
+                    ffi.copy(edit_fin_biz, tostring(session_stats.biz_income or 0))
+                    ffi.copy(edit_fin_btc, tostring(session_stats.btc_income or 0))
+                    ffi.copy(edit_fin_mine_exp, tostring(session_stats.mining_expenses_today or session_stats.mining_expenses or 0))
+                    ffi.copy(edit_fin_trade, tostring(session_stats.trade_income or 0))
+                    ffi.copy(edit_fin_deal, tostring(session_stats.deal_income or 0))
+                    ffi.copy(edit_fin_expenses, tostring(session_stats.expenses_accumulated or 0))
+                    ffi.copy(edit_fin_az, tostring(session_stats.az_accumulated or 0))
+                    
+                    show_edit_finances_modal[0] = true
+                end
+
+                imgui.PopStyleColor(4)
+
+                if imgui.IsItemHovered() then
+                    imgui.BeginTooltip()
+                    imgui.Text(u8("Нажмите, чтобы вручную изменить показатели за сегодня"))
+                    imgui.EndTooltip()
+                end
+
+                imgui.SameLine()
+                imgui.TextColored(imgui.ImVec4(0.18, 0.80, 0.44, 1.00), u8("Чистый баланс за сегодня:"))
+
                 
                 local wage_val = session_stats.wages_accumulated or 0
                 local dep_val = session_stats.dep_growth or 0
@@ -2314,7 +2384,86 @@ drawSidebarTab(6, "CLOCK_ROTATE_LEFT", "История") -- <-- ДОБАВЛЕНО
         end
         imgui.PopStyleColor()
     end
+    -- === ОКНО РУЧНОЙ КОРРЕКТИРОВКИ СУММ ЗА СЕГОДНЯ ===
+    if show_edit_finances_modal[0] then
+        local eW, eH = 430, 480
+        imgui.SetNextWindowPos(imgui.ImVec2(resX / 2, resY / 2), imgui.Cond.FirstUseEver, imgui.ImVec2(0.5, 0.5))
+        imgui.SetNextWindowSize(imgui.ImVec2(eW, eH), imgui.Cond.Always)
+        imgui.PushStyleColor(imgui.Col.WindowBg, imgui.ImVec4(0.09, 0.11, 0.15, 0.98))
 
+        if imgui.Begin("##EditFinancesModal", show_edit_finances_modal, imgui.WindowFlags.NoTitleBar + imgui.WindowFlags.NoResize + imgui.WindowFlags.NoCollapse) then
+            if imgui.IsWindowHovered(1) and imgui.IsMouseDragging(0) and not imgui.IsAnyItemActive() then
+                local delta = imgui.GetIO().MouseDelta
+                local pos = imgui.GetWindowPos()
+                imgui.SetWindowPos(imgui.ImVec2(pos.x + delta.x, pos.y + delta.y))
+            end
+
+            imgui.TextColored(imgui.ImVec4(0.95, 0.76, 0.18, 1.00), getIcon("PEN_TO_SQUARE", "?") .. u8("Редактирование финансов за сегодня"))
+            imgui.TextDisabled(u8("Измените любую сумму в случае ошибки расчётов:"))
+            imgui.Separator()
+            imgui.Dummy(imgui.ImVec2(0, 5))
+
+            imgui.PushStyleColor(imgui.Col.ChildBg, imgui.ImVec4(0.06, 0.08, 0.11, 1.00))
+            imgui.BeginChild("##fin_edit_scroll", imgui.ImVec2(0, eH - 110), true)
+
+                local function drawFinInputRow(label, icon_name, input_buf)
+                    imgui.TextColored(imgui.ImVec4(0.88, 0.89, 0.92, 1.00), getIcon(icon_name, "") .. u8(label))
+                    imgui.SetNextItemWidth(-1)
+                    imgui.InputText("##in_" .. label, input_buf, 64, imgui.InputTextFlags.CharsDecimal)
+                    imgui.Dummy(imgui.ImVec2(0, 3))
+                end
+
+                drawFinInputRow("Зарплата ($):", "DOLLAR_SIGN", edit_fin_wage)
+                drawFinInputRow("Прирост по депозиту ($):", "CREDIT_CARD", edit_fin_dep)
+                drawFinInputRow("Прибыль с бизнеса ($):", "BRIEFCASE", edit_fin_biz)
+                drawFinInputRow("Продажа BTC ($):", "COINS", edit_fin_btc)
+                drawFinInputRow("Траты на майнинг (Свет/Охлаждайки) ($):", "TRASH", edit_fin_mine_exp)
+                drawFinInputRow("Продажа товаров (Лавка) ($):", "CART_SHOPPING", edit_fin_trade)
+                drawFinInputRow("Доход от трейда ($):", "HANDSHAKE", edit_fin_deal)
+                drawFinInputRow("Общие траты за день ($):", "TRASH", edit_fin_expenses)
+                drawFinInputRow("Заработано AZ-Coins:", "COINS", edit_fin_az)
+
+            imgui.EndChild()
+            imgui.PopStyleColor()
+
+            imgui.Dummy(imgui.ImVec2(0, 5))
+
+            imgui.PushStyleColor(imgui.Col.Button, imgui.ImVec4(0.18, 0.80, 0.44, 0.40))
+            imgui.PushStyleColor(imgui.Col.ButtonHovered, imgui.ImVec4(0.18, 0.80, 0.44, 0.65))
+            if imgui.Button(u8("Сохранить изменения"), imgui.ImVec2(eW - 130, 28)) then
+                session_stats.wages_accumulated    = parse_numeric_value(ffi.string(edit_fin_wage))
+                session_stats.dep_growth           = parse_numeric_value(ffi.string(edit_fin_dep))
+                session_stats.biz_income           = parse_numeric_value(ffi.string(edit_fin_biz))
+                session_stats.btc_income           = parse_numeric_value(ffi.string(edit_fin_btc))
+                
+                local m_exp = parse_numeric_value(ffi.string(edit_fin_mine_exp))
+                session_stats.mining_expenses_today = m_exp
+                session_stats.mining_expenses       = m_exp
+                
+                session_stats.trade_income         = parse_numeric_value(ffi.string(edit_fin_trade))
+                session_stats.deal_income          = parse_numeric_value(ffi.string(edit_fin_deal))
+                session_stats.expenses_accumulated = parse_numeric_value(ffi.string(edit_fin_expenses))
+                session_stats.az_accumulated       = parse_numeric_value(ffi.string(edit_fin_az))
+
+                save_stats_to_file()
+                show_edit_finances_modal[0] = false
+                show_arz_notify('success', 'TM', 'Финансовые данные за сегодня обновлены!', 3000)
+            end
+            imgui.PopStyleColor(2)
+
+            imgui.SameLine()
+
+            imgui.PushStyleColor(imgui.Col.Button, imgui.ImVec4(0.18, 0.20, 0.26, 0.80))
+            imgui.PushStyleColor(imgui.Col.ButtonHovered, imgui.ImVec4(0.24, 0.26, 0.33, 1.00))
+            if imgui.Button(u8("Отмена"), imgui.ImVec2(100, 28)) then
+                show_edit_finances_modal[0] = false
+            end
+            imgui.PopStyleColor(2)
+
+            imgui.End()
+        end
+        imgui.PopStyleColor()
+    end
     if show_add_funds_modal[0] then
         imgui.SetNextWindowPos(imgui.ImVec2(resX / 2, resY / 2), imgui.Cond.Appearing, imgui.ImVec2(0.5, 0.5))
         imgui.SetNextWindowSize(imgui.ImVec2(340, 200), imgui.Cond.Always)
@@ -3072,6 +3221,7 @@ function samp.onServerMessage(color, text)
     -- Пример 2 (VC): [Информация] Вы успешно пополнили счёт дома за электроэнергию на ??57.280.
     -- === [МАЙНИНГ] ПЕРЕХВАТ ОПЛАТЫ ЭЛЕКТРОЭНЕРГИИ (БЕЗ УМНОЖЕНИЯ) ===
     -- Пример: [Информация] Вы успешно пополнили счёт дома за электроэнергию на $ 300.000.
+    -- === [МАЙНИНГ] ПЕРЕХВАТ ОПЛАТЫ ЭЛЕКТРОЭНЕРГИИ ===
     if cleanText:find("Вы успешно пополнили") and cleanText:find("электроэнергию") then
         local sum_str = cleanText:match("электроэнергию на%s*[^%d]*(%d[%d%.,]*)")
                      or cleanText:match("на%s*[^%d]*(%d[%d%.,]*)")
@@ -3079,9 +3229,10 @@ function samp.onServerMessage(color, text)
         if sum_str then
             local val = parse_numeric_value(sum_str)
             if val > 0 then
-                -- Записываем ровно ту сумму, которая в чате (без x136)
-                session_stats.mining_electricity = (session_stats.mining_electricity or 0) + val
-                session_stats.mining_expenses = (session_stats.mining_expenses or 0) + val
+                -- Обновляем ежедневные счетчики майнинга
+                session_stats.mining_expenses_today = (session_stats.mining_expenses_today or 0) + val
+                
+                -- ОБЯЗАТЕЛЬНО: Добавляем в общие траты за сегодня, чтобы они шли в общий баланс и общий график!
                 session_stats.expenses_accumulated = (session_stats.expenses_accumulated or 0) + val
                 
                 -- Запись в Историю (вкладка 6)
@@ -3093,7 +3244,7 @@ function samp.onServerMessage(color, text)
         end
     end
 
-    -- === [МАЙНИНГ] ПЕРЕХВАТ ПОКУПКИ ОХЛАЖДАЮЩЕЙ ЖИДКОСТИ (БЕЗ УМНОЖЕНИЯ) ===
+    -- === [МАЙНИНГ] ПЕРЕХВАТ ПОКУПКИ ОХЛАЖДАЮЩЕЙ ЖИДКОСТИ ===
     if cleanText:find("Вы успешно купили") and cleanText:find("Охлаждающая жидкость для видеокарты") then
         local qty_str = cleanText:match("%((%d+)%s*шт%.%)") or "1"
         local qty = tonumber(qty_str) or 1
@@ -3102,9 +3253,10 @@ function samp.onServerMessage(color, text)
         if price_str then
             local total_price = parse_numeric_value(price_str)
             if total_price > 0 then
-                -- Записываем ровно точное значение (без x136)
-                session_stats.mining_coolants = (session_stats.mining_coolants or 0) + total_price
-                session_stats.mining_expenses = (session_stats.mining_expenses or 0) + total_price
+                -- Обновляем ежедневные счетчики майнинга
+                session_stats.mining_expenses_today = (session_stats.mining_expenses_today or 0) + total_price
+                
+                -- ОБЯЗАТЕЛЬНО: Добавляем в общие траты за сегодня!
                 session_stats.expenses_accumulated = (session_stats.expenses_accumulated or 0) + total_price
                 
                 -- Запись в Историю (вкладка 6)
@@ -3115,6 +3267,7 @@ function samp.onServerMessage(color, text)
             end
         end
     end
+
 	
 	
     -- === ОБРАБОТКА НАЧИСЛЕНИЯ AZ-COINS ИЗ ИНВЕНТАРЯ И ЛОТЕРЕИ ===
@@ -3301,11 +3454,20 @@ end
             end
 
             if not sendUnknownItems[0] and name:find("ID:") then return end
-            if itemAdding[0] then
+                        if itemAdding[0] then
                 local item_tag = cfg.config.itemEmoji ~= "emoji_none" and ("{" .. cfg.config.itemEmoji .. "} ") or ""
-                local message_to_send = shortMessage[0] and (text:gsub(":item%d+:", "'" .. name .. "'") .. ", используйте клавишу 'Y' или /invent") or ((item_tag .. "Вам был добавлен предмет %s {emoji_backpack}"):format(name))
+                local message_to_send = ""
+                
+                if shortMessage[0] then
+
+                    message_to_send = cleanText:gsub(":item%d+:", "'" .. name .. "'"):gsub("^:[%w%d]+:%s*", "") .. ", используйте клавишу 'Y' или /invent"
+                else
+                    message_to_send = (item_tag .. "Вам был добавлен предмет %s {emoji_backpack}"):format(name)
+                end 
+                
                 sendTelegramMessage(message_to_send)
             end
+
             return
         end
     end
