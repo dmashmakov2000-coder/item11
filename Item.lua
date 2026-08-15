@@ -10,11 +10,11 @@ local fa_ok, fa = pcall(require, 'fAwesome6')
 
 local load_errors = {}
 local function check_lib(name)
-    local ok, lib = pcall(require, name)
+    local ok, lib = pcall(require, name) 
     if not ok then
         print(('[TM] Warning: Library \'%s\' not found.'):format(name))
         table.insert(load_errors, ('Библиотека \'%s\' не найдена.'):format(name))
-        return false, nil
+        return false, nil  
     end
     return true, lib
 end
@@ -46,7 +46,7 @@ local stats_file_path = script_folder .. "\\ScriptTM_stats.json"
 local ITEMS_DB_URL = "https://raw.githubusercontent.com/dmashmakov2000-coder/item11/main/items.json"
 local LOGO_URL = "https://raw.githubusercontent.com/dmashmakov2000-coder/item11/main/logo1.png"
 
-local SCRIPT_VERSION = "0.3.8"
+local SCRIPT_VERSION = "0.4.0"
 local UPDATE_URL = "https://raw.githubusercontent.com/dmashmakov2000-coder/item11/main/Item.lua"
 local CFG_FILENAME = 'Script [TM].ini'
 
@@ -54,9 +54,8 @@ local ANTIBLOCK_URL = "https://tg.bakh.us"
 local DEFAULT_API = "https://api.telegram.org"
 local wasOpenedByCommand = false
 
-local UPDATE_INFO = [[исправлено получение предметов в сторедж
-теперь сообщения вновь приходят 
-новый спписок предметов будет обновлен на днях]]
+local UPDATE_INFO = [[Список предметов теперь пополняется автоматически
+]]
 
 -- Точный IP-адрес Vice City
 local VC_IP = "80.66.82.147"
@@ -601,6 +600,112 @@ local function get_average_daily_value(value_type)
     return 0
 end
 
+
+
+
+
+
+
+
+
+-- === АВТОМАТИЧЕСКИЙ ПОИСК ПРЕДМЕТА ЧЕРЕЗ API ARIZONA И СОХРАНЕНИЕ В items.json ===
+-- === АВТОМАТИЧЕСКИЙ ПОИСК И СОХРАНЕНИЕ В ФОРМАТЕ [ID] = "NAME" ===
+local is_fetching_item = {} 
+
+function fetchAndSaveMissingItem(itemId, callback)
+    local id_str = tostring(itemId)
+    local id_num = tonumber(itemId)
+    if not id_num then return end
+
+    if is_fetching_item[id_str] then return end
+    is_fetching_item[id_str] = true
+
+    lua_thread.create(function()
+        local effil_ok, effil = pcall(require, "effil")
+        if not effil_ok then
+            is_fetching_item[id_str] = nil
+            if callback then callback("ID: " .. id_str) end
+            return
+        end
+
+        local request_thread = effil.thread(function(url)
+            local requests = require("requests")
+            local ok, response = pcall(requests.get, url, {
+                headers = {
+                    ["Content-Type"] = "application/json; charset=utf-8",
+                    ["User-Agent"] = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36 Edg/146.0.0.0",
+                }
+            })
+            if ok and response.status_code == 200 then
+                return true, response.text
+            end
+            return false, nil
+        end)("https://server-api.arizona.games/client/json/table/get?project=arizona&server=0&key=inventory_items")
+
+        while true do
+            local status, err = request_thread:status()
+            if err or status == "canceled" then
+                is_fetching_item[id_str] = nil
+                if callback then callback("ID: " .. id_str) end
+                return
+            end
+
+            if status == "completed" then
+                local ok, json_text = request_thread:get()
+                is_fetching_item[id_str] = nil
+
+                if ok and json_text then  
+                    local pcall_ok, data = pcall(json.decode, json_text)
+                    if pcall_ok and type(data) == "table" then
+                        for _, item in pairs(data) do
+                            if tonumber(item.id) == id_num then
+                                local raw_name = item.name or "Неизвестно"
+                                local ok_dec, decoded_name = pcall(function() return u8:decode(raw_name) end)
+                                local item_name = ok_dec and decoded_name or raw_name
+
+                                if item.model and tonumber(item.model) and tonumber(item.model) > 0 then
+                                    item_name = item_name .. "  (" .. tostring(item.model) .. ")"
+                                end
+
+                                items_name[id_str] = item_name
+                                items_loaded = true
+
+                                local f = io.open(items_db_path, "w")
+                                if f then
+                                    f:write("return {\n")
+                                    
+                                    local sorted_ids = {}
+                                    for k in pairs(items_name) do table.insert(sorted_ids, tonumber(k)) end
+                                    table.sort(sorted_ids)
+
+                                    for _, id in ipairs(sorted_ids) do
+                                        local name_val = items_name[tostring(id)]
+                                        f:write(string.format('    [%d] = "%s",\n', id, u8:encode(name_val)))
+                                    end
+                                    
+                                    f:write("}")
+                                    f:close()
+                                end
+
+                                if callback then callback(item_name) end
+                                return
+                            end
+                        end
+                    end
+                end
+
+                if callback then callback("ID: " .. id_str) end
+                return
+            end
+            wait(50)
+        end
+    end)
+end
+
+
+
+
+
 function loadItemsDatabase()
     if doesFileExist(items_db_path) then
         local f = io.open(items_db_path, "r")
@@ -610,44 +715,32 @@ function loadItemsDatabase()
             
             local raw_data = nil
             
-            -- Попытка загрузить как Lua-таблицу (старый формат)
-            if content:find("local%s+items_name%s*=") or content:find("%[%s*%d+%s*%]%s*=") then
+            if content:find("return%s*{") or content:find("local%s+items_name%s*=") or content:find("%[%s*%d+%s*%]%s*=") then
                 local clean_lua = content:gsub("local%s+items_name%s*=%s*", "return ")
                 local fn, err = load(clean_lua)
                 if fn then
                     local ok, res = pcall(fn)
                     if ok and type(res) == "table" then raw_data = res end
-                else
-                    sampAddChatMessage("{FF0000}[TM Debug] Ошибка при загрузке items.json как Lua: " .. tostring(err), -1)
                 end
             else
-                -- Попытка загрузить как JSON (новый/стандартный формат)
                 local ok, decoded = pcall(json.decode, content)
-                if ok then raw_data = decoded
-                else sampAddChatMessage("{FF0000}[TM Debug] Ошибка при загрузке items.json как JSON: " .. tostring(decoded), -1)
-                end
+                if ok then raw_data = decoded end
             end
 
             if raw_data then
                 items_name = {}
-                local count = 0
                 for k, v in pairs(raw_data) do
                     items_name[tostring(k)] = to_cp1251(v)
-                    count = count + 1
                 end
                 items_loaded = true
-                sampAddChatMessage("{00FF00}[TM Debug] items.json успешно загружен, предметов: " .. count, -1)
-            else
-                sampAddChatMessage("{FF0000}[TM Debug] items.json загружен, но данные не распознаны.", -1)
             end
-        else
-            sampAddChatMessage("{FF0000}[TM Debug] Не удалось открыть items.json для чтения.", -1)
         end
     else
-        sampAddChatMessage("{FF0000}[TM Debug] items.json не найден. Загружаю с сервера.", -1)
-        downloadItemsDatabase()
+        items_name = {}
+        items_loaded = true
     end
 end
+
 
 
 function downloadItemsDatabase()
@@ -2997,7 +3090,7 @@ local function processTradeMoneyChange(new_money)
     session_stats.expenses_accumulated = (session_stats.expenses_accumulated or 0) + expense
     save_stats_to_file()
 
-    sampAddChatMessage("{FF6347}[TM] Переданные деньги учтены как расход: -$" .. formatNumber(expense), -1)
+    --sampAddChatMessage("{FF6347}[TM] Переданные деньги учтены как расход: -$" .. formatNumber(expense), -1)
 end
 
 function samp.onSetPlayerMoney(money)
@@ -3025,7 +3118,7 @@ function samp.onShowDialog(dialogId, style, title, button1, button2, text)
 
                     session_stats.deal_income = (session_stats.deal_income or 0) + inc_val
                     save_stats_to_file()
-                    sampAddChatMessage("{00FF00}[TM] Доход от трейда добавлен в финансы: $" .. formatNumber(inc_val), -1)
+                    --sampAddChatMessage("{00FF00}[TM] Доход от трейда добавлен в финансы: $" .. formatNumber(inc_val), -1)
                 end
             end
         end
@@ -3056,7 +3149,7 @@ local function processDealIncomeMessage(text)
     session_stats.deal_income = (session_stats.deal_income or 0) + amount
     save_stats_to_file()
 
-    sampAddChatMessage("{00FF00}[TM] Доход от трейда добавлен в финансы: $" .. formatNumber(amount), -1)
+    --sampAddChatMessage("{00FF00}[TM] Доход от трейда добавлен в финансы: $" .. formatNumber(amount), -1)
 end
 
 function samp.onServerMessage(color, text)
@@ -3088,7 +3181,7 @@ function samp.onServerMessage(color, text)
                 add_history_log("Майнинг", "Оплата электроэнергии дома", "-$" .. formatNumber(val), true)
                 save_stats_to_file()
                 
-                sampAddChatMessage("{00FF00}[Script TM] Успешно учтена оплата электроэнергии: {FFFFFF}$" .. formatNumber(val), -1)
+                --sampAddChatMessage("{00FF00}[Script TM] Успешно учтена оплата электроэнергии: {FFFFFF}$" .. formatNumber(val), -1)
             end
         end
     end
@@ -3111,7 +3204,7 @@ function samp.onServerMessage(color, text)
                 add_history_log("Майнинг", "Купил охлаждайку ("..qty.." шт.)", "-$" .. formatNumber(total_price), true)
                 save_stats_to_file()
                 
-                sampAddChatMessage("{00FF00}[Script TM] Учтена покупка охлаждаек ("..qty.." шт.): {FFFFFF}$" .. formatNumber(total_price), -1)
+                --sampAddChatMessage("{00FF00}[Script TM] Учтена покупка охлаждаек ("..qty.." шт.): {FFFFFF}$" .. formatNumber(total_price), -1)
             end
         end
     end
@@ -3124,7 +3217,7 @@ function samp.onServerMessage(color, text)
         if az_val > 0 then
             session_stats.az_accumulated = (session_stats.az_accumulated or 0) + az_val
             save_stats_to_file()
-            sampAddChatMessage("{00FF00}[TM] Получено AZ из инвентаря: +" .. formatNumber(az_val) .. " AZ", -1)
+          --  sampAddChatMessage("{00FF00}[TM] Получено AZ из инвентаря: +" .. formatNumber(az_val) .. " AZ", -1)
         end
     end
 
@@ -3135,7 +3228,7 @@ function samp.onServerMessage(color, text)
         if az_val > 0 then
             session_stats.az_accumulated = (session_stats.az_accumulated or 0) + az_val
             save_stats_to_file()
-            sampAddChatMessage("{00FF00}[TM] Получено AZ из лотереи: +" .. formatNumber(az_val) .. " AZ", -1)
+            --sampAddChatMessage("{00FF00}[TM] Получено AZ из лотереи: +" .. formatNumber(az_val) .. " AZ", -1)
         end
     end
 
@@ -3250,89 +3343,83 @@ end
     -- Пример сообщения: ?? В пункт выдачи пришла посылка item:123. Забрать: /storage
        -- === ОБРАБОТКА ПОЛУЧЕНИЯ ПОСЫЛКИ В ПУНКТЕ ВЫДАЧИ ===
     -- Триггер: В пункт выдачи пришла посылка item:номер.
+       -- === ОБРАБОТКА ПОЛУЧЕНИЯ ПОСЫЛКИ В ПУНКТЕ ВЫДАЧИ ===
     if cleanText:find("В пункт выдачи пришла посылка") then
         local is_player_chat = cleanText:find("говорит:") or cleanText:find("сказал:") or cleanText:find("%[%d+%]%s*:")
         if is_player_chat then return end
 
-        -- Извлекаем ID (поддерживаем оба формата на всякий случай)
         local storageItemId = cleanText:match("item:(%d+)") or text:match(":item(%d+):")
         
         if storageItemId then
-            -- Используем твою рабочую систему получения имени
-            local name = getItemName(storageItemId)
+            local processStorageNotice = function(name)
+                -- Проверка черного списка
+                if session_stats.ignored_items then
+                    if session_stats.ignored_items[name] or session_stats.ignored_items[tostring(storageItemId)] then
+                        return
+                    end
+                end
 
-            -- Используем твою рабочую систему черного списка
-            if session_stats.ignored_items then
-                if session_stats.ignored_items[name] or session_stats.ignored_items[tostring(storageItemId)] then
-                    return -- Если в игноре, выходим
+                if storage[0] then
+                    local storage_tag = cfg.config.storageEmoji ~= "emoji_none" and ("{" .. cfg.config.storageEmoji .. "} ") or ""
+                    local msg = storage_tag .. "В пункт выдачи пришла посылка: " .. name
+                    sendTelegramMessage(msg)
                 end
             end
 
-            -- Отправка в Telegram
-            if storage[0] then
-                local storage_tag = cfg.config.storageEmoji ~= "emoji_none" and ("{" .. cfg.config.storageEmoji .. "} ") or ""
-                -- Формируем чистое сообщение без "Забрать: /storage"
-                local msg = storage_tag .. "В пункт выдачи пришла посылка: " .. name
-                sendTelegramMessage(msg)
+            -- Если предмет уже есть в базе
+            local existing_name = items_name[tostring(storageItemId)]
+            if existing_name then
+                processStorageNotice(existing_name)
+            else
+                -- Если предмета нет в базе -> запрашиваем API, сохраняем в items.json и отправляем
+                fetchAndSaveMissingItem(storageItemId, processStorageNotice)
             end
         end
         return 
     end
 
-
-
-
-
-    -- === ОБРАБОТКА ПОЛУЧЕНИЯ ПРЕДМЕТОВ ===
-    local itemId = text:match(":item(%d+):")
-
-if color == -65281 or text:find("Вам добавлен предмет") or text:find("добавлен предмет") then
+    -- === ОБРАБОТКА ПОЛУЧЕНИЯ ПРЕДМЕТОВ В ИНВЕНТАРЬ ===
+    if color == -65281 or text:find("Вам добавлен предмет") or text:find("добавлен предмет") then
         local is_player_chat = cleanText:find("говорит:") or cleanText:find("сказал:") or cleanText:find("%[%d+%]%s*:")
         if is_player_chat then return end
 
-        local oldItemName = text:match(
-            "В инвентарь добавлен предмет:%s*'([^']-)%s*'%s*%.?[,%.]?%s*используйте клавишу 'Y' или /invent"
-        )
-
-        if oldItemName then
-            oldItemName = oldItemName:gsub("%s+$", "")
-
-            if itemAdding[0] then
-                local message_to_send = string.format(
-                    "Вам был добавлен предмет '%s'. Откройте инвентарь, используйте клавишу 'Y' или /invent",
-                    oldItemName
-                )
-
-                sendTelegramMessage(message_to_send)
-            end
-
-            return
-        end
-
         local itemId = text:match(":item(%d+):")
         if itemId then
-            local name = getItemName(itemId)
+            local processItemNotice = function(name)
+                -- Черный список
+                if session_stats.ignored_items then
+                    if session_stats.ignored_items[name] or session_stats.ignored_items[tostring(itemId)] then
+                        return
+                    end
+                end
 
-            if session_stats.ignored_items then
-                if session_stats.ignored_items[name] or session_stats.ignored_items[tostring(itemId)] then
-                    return
+                if not sendUnknownItems[0] and name:find("^ID:%s*%d+$") then return end
+
+                if itemAdding[0] then
+                    local item_tag = cfg.config.itemEmoji ~= "emoji_none" and ("{" .. cfg.config.itemEmoji .. "} ") or ""
+                    local message_to_send = ""
+                    
+                    if shortMessage[0] then
+                        message_to_send = cleanText:gsub(":item%d+:", "'" .. name .. "'"):gsub("^:[%w%d]+:%s*", "") .. ", используйте клавишу 'Y' или /invent"
+                    else
+                        message_to_send = (item_tag .. "Вам был добавлен предмет %s {emoji_backpack}"):format(name)
+                    end
+                    
+                    sendTelegramMessage(message_to_send)
                 end
             end
 
-            if not sendUnknownItems[0] and name:find("ID:") then return end
-
-            if itemAdding[0] then
-                local message_to_send = string.format(
-                    "Вам был добавлен предмет '%s'. Откройте инвентарь, используйте клавишу 'Y' или /invent",
-                    name
-                )
-
-                sendTelegramMessage(message_to_send)
+            local existing_name = items_name[tostring(itemId)]
+            if existing_name then
+                processItemNotice(existing_name)
+            else
+                -- Авто-поиск через API и авто-сохранение в items.json
+                fetchAndSaveMissingItem(itemId, processItemNotice)
             end
-
             return
         end
     end
+
 
 
     if cleanText:find("Вы выбрали местом спавна") then
