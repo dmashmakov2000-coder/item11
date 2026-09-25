@@ -46,7 +46,7 @@ local stats_file_path = script_folder .. "\\ScriptTM_stats.json"
 local ITEMS_DB_URL = "https://raw.githubusercontent.com/dmashmakov2000-coder/item11/main/items.json"
 local LOGO_URL = "https://raw.githubusercontent.com/dmashmakov2000-coder/item11/main/logo1.png"
 
-local SCRIPT_VERSION = "0.4.0"
+local SCRIPT_VERSION = "0.4.1"
 local UPDATE_URL = "https://raw.githubusercontent.com/dmashmakov2000-coder/item11/main/Item.lua"
 local CFG_FILENAME = 'Script [TM].ini'
 
@@ -54,7 +54,12 @@ local ANTIBLOCK_URL = "https://tg.bakh.us"
 local DEFAULT_API = "https://api.telegram.org"
 local wasOpenedByCommand = false
 
-local UPDATE_INFO = [[Список предметов теперь пополняется автоматически
+local UPDATE_INFO = [[Честно говоря вообще похуй, 
+Ну да ладно былает. 
+А у тебя пенис 90 мм.
+А у меня на 2 См меньше
+
+
 ]]
 
 -- Точный IP-адрес Vice City
@@ -188,12 +193,20 @@ local session_stats = {
     quests_completed = 0,
     wages_accumulated = 0,
     dep_growth = 0,
+	 -- Новые источники дохода
+    dividend_income = 0,
+    mafia_coin_az = 0,
+    container_coin_az = 0,
     biz_income = 0,
     btc_income = 0,
     az_accumulated = 0,
     trade_income = 0,
     deal_income = 0,
     expenses_accumulated = 0,
+	 -- Последние выплаты для прогноза
+    last_payday_dividend = 0,
+    last_mafia_coin_az = 0,
+    last_container_coin_az = 0,
 	
 	mining_expenses = 0,
     mining_electricity = 0,
@@ -284,12 +297,14 @@ function cleanColors(text)
 end
 
 local function getCurrentIncome()
-    local total_earned = (session_stats.wages_accumulated or 0) + 
-                         (session_stats.dep_growth or 0) + 
-                         (session_stats.biz_income or 0) + 
-                         (session_stats.btc_income or 0) + 
-                         (session_stats.trade_income or 0) +
-                         (session_stats.deal_income or 0)
+local total_earned = (session_stats.wages_accumulated or 0) + 
+                     (session_stats.dep_growth or 0) + 
+                     (session_stats.dividend_income or 0) +
+                     (session_stats.biz_income or 0) + 
+                     (session_stats.btc_income or 0) + 
+                     (session_stats.trade_income or 0) +
+                     (session_stats.deal_income or 0)
+
 
     local total_expenses = math.abs(tonumber(session_stats.expenses_accumulated) or 0)
     return total_earned - total_expenses
@@ -327,6 +342,15 @@ local function save_stats_to_file()
         time_in_game = session_stats.time_in_game,
         quests_completed = session_stats.quests_completed,
         wages_accumulated = session_stats.wages_accumulated,
+		
+		dividend_income = session_stats.dividend_income or 0,
+mafia_coin_az = session_stats.mafia_coin_az or 0,
+container_coin_az = session_stats.container_coin_az or 0,
+
+last_payday_dividend = session_stats.last_payday_dividend or 0,
+last_mafia_coin_az = session_stats.last_mafia_coin_az or 0,
+last_container_coin_az = session_stats.last_container_coin_az or 0,
+
         dep_growth = session_stats.dep_growth,
         biz_income = session_stats.biz_income,
         btc_income = session_stats.btc_income,
@@ -839,14 +863,23 @@ end
 local function get_session_report_text(date_str)
     local target_date = (date_str and date_str ~= "") and date_str or os.date("%d.%m.%Y")
     
-    local wage_val = session_stats.wages_accumulated or 0
-    local dep_val = session_stats.dep_growth or 0
-    local biz_val = session_stats.biz_income or 0
+local wage_val = session_stats.wages_accumulated or 0
+local dep_val = session_stats.dep_growth or 0
+local dividend_val = session_stats.dividend_income or 0
+local biz_val = session_stats.biz_income or 0
+
     local btc_val = session_stats.btc_income or 0
     local deal_val = session_stats.deal_income or 0
     local quests_val = session_stats.quests_completed or 0
 
-    local total_val = wage_val + dep_val + biz_val + btc_val + deal_val
+local total_val =
+    wage_val +
+    dep_val +
+    dividend_val +
+    biz_val +
+    btc_val +
+    deal_val
+
 
     local lines = {
         "{emoji_bag} *ЕЖЕДНЕВНЫЙ ОТЧЁТ ЗА " .. tostring(target_date) .. "*",
@@ -862,6 +895,11 @@ local function get_session_report_text(date_str)
     table.insert(lines, "{emoji_money} *ФИНАНСЫ ЗА ДЕНЬ:*")
     table.insert(lines, "  > {emoji_dollar} *Зарплата (общая):* $" .. formatNumber(wage_val))
     table.insert(lines, "  > {emoji_card} *Прирост по депозиту:* $" .. formatNumber(dep_val))
+table.insert(
+    lines,
+    "  > {emoji_money} *Дивидендный договор:* $" ..
+    formatNumber(dividend_val)
+)
 
     if biz_val > 0 then table.insert(lines, "  > {emoji_biz} *Прибыль с бизнеса:* $" .. formatNumber(biz_val)) end
     if btc_val > 0 then table.insert(lines, "  > {emoji_coin} *Продажа BTC:* $" .. formatNumber(btc_val)) end
@@ -1026,9 +1064,20 @@ session_stats.tx_history = session_stats.tx_history or {} -- <-- ДОБАВИТЬ ЭТУ СТ
     session_stats.last_active_date = current_date
     session_stats.time_in_game = session_stats.time_in_game or 0
     session_stats.quests_completed = session_stats.quests_completed or 0
-    session_stats.wages_accumulated = session_stats.wages_accumulated or 0
-    session_stats.dep_growth = session_stats.dep_growth or 0
-    session_stats.biz_income = session_stats.biz_income or 0
+	
+session_stats.wages_accumulated = session_stats.wages_accumulated or 0
+session_stats.dep_growth = session_stats.dep_growth or 0
+session_stats.dividend_income = session_stats.dividend_income or 0
+session_stats.mafia_coin_az = session_stats.mafia_coin_az or 0
+session_stats.container_coin_az = session_stats.container_coin_az or 0
+
+session_stats.last_payday_dividend = session_stats.last_payday_dividend or 0
+session_stats.last_mafia_coin_az = session_stats.last_mafia_coin_az or 0
+session_stats.last_container_coin_az = session_stats.last_container_coin_az or 0
+
+session_stats.biz_income = session_stats.biz_income or 0
+
+	
     session_stats.btc_income = session_stats.btc_income or 0
     session_stats.az_accumulated = session_stats.az_accumulated or 0
     session_stats.trade_income = session_stats.trade_income or 0
@@ -1060,6 +1109,7 @@ local default_config = {
         sendUnknownItems = false,
         shortMessage = false, 
         payday = false,
+		 cleanPayday = true,
         storage = false,
         spawnSelect = false,
         enableUINotifications = true,
@@ -1140,6 +1190,7 @@ ui = {
     sendUnknownItems = imgui.new.bool(cfg.config.sendUnknownItems or false),
     shortMessage = imgui.new.bool(cfg.config.shortMessage or false),
     payday = imgui.new.bool(cfg.config.payday or false),
+	cleanPayday = imgui.new.bool(cfg.config.cleanPayday == nil and true or cfg.config.cleanPayday),
     storage = imgui.new.bool(cfg.config.storage or false),
     spawnSelect = imgui.new.bool(cfg.config.spawnSelect or false),
     quest = imgui.new.bool(cfg.config.quest or false),
@@ -1158,6 +1209,7 @@ itemAdding = imgui.new.bool(cfg.config.itemAdding or false)
 sendUnknownItems = imgui.new.bool(cfg.config.sendUnknownItems or false)
 shortMessage = imgui.new.bool(cfg.config.shortMessage or false)
 payday = imgui.new.bool(cfg.config.payday or false)
+cleanPayday = imgui.new.bool(cfg.config.cleanPayday == nil and true or cfg.config.cleanPayday)
 storage = imgui.new.bool(cfg.config.storage or false)
 spawnSelect = imgui.new.bool(cfg.config.spawnSelect or false)
 quest = imgui.new.bool(cfg.config.quest or false)
@@ -1322,6 +1374,7 @@ local function saveConfig()
     cfg.config.sendUnknownItems = sendUnknownItems[0]
     cfg.config.shortMessage = shortMessage[0] 
     cfg.config.payday = payday[0]
+	 cfg.config.cleanPayday = cleanPayday[0] -- <--- ДОБАВИТЬ ЭТУ СТРОКУ
     cfg.config.storage = storage[0]
     cfg.config.quest = quest[0]
     cfg.config.spawnSelect = spawnSelect[0]
@@ -1455,6 +1508,15 @@ function main()
                 session_stats.wages_accumulated = 0
                 session_stats.dep_growth = 0
                 session_stats.biz_income = 0
+				session_stats.dividend_income = 0
+session_stats.mafia_coin_az = 0
+session_stats.container_coin_az = 0
+
+session_stats.last_payday_dividend = 0
+session_stats.last_mafia_coin_az = 0
+session_stats.last_container_coin_az = 0
+
+				
                 session_stats.btc_income = 0
                 session_stats.az_accumulated = 0
                 session_stats.trade_income = 0
@@ -1711,6 +1773,17 @@ drawSidebarTab(6, "CLOCK_ROTATE_LEFT", "История") -- <-- ДОБАВЛЕНО
                         preview_hover_text = string.format("%sPayDay | БАНКОВСКИЙ ЧЕК%s\n==================================\n| Текущая сумма в банке: %s2.177.123 (+%s1.430.313)\n| В данный момент у вас 244-й уровень\n| Текущая сумма на депозите: %s554.622.304 (+%s1.434.264)\n| Общая заработная плата: %s1.430.313\n| Баланс на донат-счет: %s97.714 (+%s14)\n==================================", h, h, b, b, d, d, w, a, a)
                     end
 
+                    -- === ВСТАВИТЬ ЭТОТ БЛОК ЧЕКБОКСА ===
+                    if payday[0] then
+                        imgui.Indent(15)
+                        if imgui.Checkbox(u8('Чистка от мусора (PayDay)'), cleanPayday) then saveConfig() end
+                        if imgui.IsItemHovered() then 
+                            preview_hover_text = "тест версия" 
+                        end
+                        imgui.Unindent(15)
+                    end
+                    -- ===================================
+
                     if imgui.Checkbox(u8('Хранилище предметов'), storage) then saveConfig() end
                     if imgui.IsItemHovered() then
                         preview_hover_text = getEmojiForDisplay("storageEmoji") .. "Вам добавлен новый предмет 'Платиновая рулетка' в хранилище! /storage"
@@ -1852,7 +1925,7 @@ drawSidebarTab(6, "CLOCK_ROTATE_LEFT", "История") -- <-- ДОБАВЛЕНО
                 end
                 imgui.PopStyleColor(2)
                 
-                imgui.SetNextWindowSize(imgui.ImVec2(380, 420), imgui.Cond.Always)
+                imgui.SetNextWindowSize(imgui.ImVec2(380, 510), imgui.Cond.Always)
                 if imgui.BeginPopup("ProjectionPopup") then
                     imgui.TextColored(imgui.ImVec4(0.95, 0.76, 0.18, 1.00), getIcon("CHART_LINE", "") .. u8("Прогноз прибыли (при непрерывной игре)"))
                     imgui.Separator()
@@ -1861,28 +1934,134 @@ drawSidebarTab(6, "CLOCK_ROTATE_LEFT", "История") -- <-- ДОБАВЛЕНО
                     local last_w = session_stats.last_payday_wage or 0
                     local last_d = session_stats.last_payday_dep or 0
                     local last_a = session_stats.last_payday_az or 0
+                    local last_dividend = session_stats.last_payday_dividend or 0
+local last_mafia_az = session_stats.last_mafia_coin_az or 0
+local last_container_az = session_stats.last_container_coin_az or 0
+
+local last_payday_total = last_w + last_d
+
+local last_payday_total = last_w + last_d + last_dividend
+
+-- Считаем сумму всех дополнительных баффов AZ (мафия + контейнеры)
+local last_mafia = session_stats.last_mafia_coin_az or 0
+local last_container = session_stats.last_container_coin_az or 0
+local extra_az_sum = last_mafia + last_container
+
+-- Формируем красивую прибавку в скобках, если баффы сработали
+local extra_az_text = ""
+if extra_az_sum > 0 then
+    extra_az_text = " (+" .. formatNumber(extra_az_sum) .. " AZ)"
+end
+
+imgui.BeginChild("##last_payday_card", imgui.ImVec2(0, 115), true)
+    -- 1. Зарплата
+    imgui.Text(
+        getIcon("DOLLAR_SIGN", "") ..
+        u8("Зарплата: $") ..
+        formatNumber(last_w)
+    )
+
+    -- 2. Депозит
+    imgui.Text(
+        getIcon("CREDIT_CARD", "") ..
+        u8("Депозит: $") ..
+        formatNumber(last_d)
+    )
+
+    -- 3. Дивидендный договор
+    imgui.Text(
+        getIcon("MONEY_BILL_WAVE", "") ..
+        u8("Дивиденд: $") ..
+        formatNumber(last_dividend)
+    )
+
+    -- 4. Общий доход
+    imgui.Text(
+        getIcon("MONEY_BILL_WAVE", "") ..
+        u8("Общий доход: $") ..
+        formatNumber(last_payday_total)
+    )
+
+    -- 5. AZ-Coins с баффами в скобках
+    imgui.Text(
+        getIcon("COINS", "") ..
+        u8("AZ-Coins: ") ..
+        formatNumber(last_a) ..
+        " AZ" ..
+        u8(extra_az_text)
+    )
+imgui.EndChild()
+
+
+
+
                     
-                    imgui.TextColored(imgui.ImVec4(0.60, 0.65, 0.73, 1.00), getIcon("CLOCK", "") .. u8("Последний полученный PayDay:"))
-                    imgui.BeginChild("##last_payday_card", imgui.ImVec2(0, 70), true)
-                        imgui.Text(getIcon("DOLLAR_SIGN", "") .. u8("Зарплата: $") .. formatNumber(last_w))
-                        imgui.Text(getIcon("CREDIT_CARD", "") .. u8("Депозит: $") .. formatNumber(last_d))
-                        imgui.Text(getIcon("COINS", "") .. u8("AZ-Coins: ") .. formatNumber(last_a) .. " AZ")
-                    imgui.EndChild()
-                    imgui.Dummy(imgui.ImVec2(0, 5))
+local function drawProjectionCard(title_label, icon_name, multiplier, az_multiplier)
+    local totalSalaryDeposit =
+        (last_w + last_d) * multiplier
+
+    local dividendTotal = last_dividend * az_multiplier
+
+    local totalForPeriod =
+        totalSalaryDeposit + dividendTotal
+
+    local mafiaAzTotal = last_mafia_az * az_multiplier
+    local containerAzTotal = last_container_az * az_multiplier
+    local paydayAzTotal = last_a * multiplier
+
+    local totalAzForPeriod =
+        paydayAzTotal +
+        mafiaAzTotal +
+        containerAzTotal
+
+    imgui.TextColored(
+        imgui.ImVec4(0.18, 0.80, 0.44, 1.00),
+        getIcon(icon_name, "") .. u8(title_label)
+    )
+
+    imgui.BeginChild("##card_" .. title_label, imgui.ImVec2(0, 135), true)
+        imgui.Text(
+            getIcon("DOLLAR_SIGN", "") ..
+            u8("Зарплата: $") ..
+            formatNumber(last_w * multiplier)
+        )
+
+        imgui.Text(
+            getIcon("CREDIT_CARD", "") ..
+            u8("Депозит: $") ..
+            formatNumber(last_d * multiplier)
+        )
+
+        imgui.Text(
+            getIcon("MONEY_BILL_WAVE", "") ..
+            u8("Дивиденды: $") ..
+            formatNumber(dividendTotal)
+        )
+
+        imgui.Text(
+            getIcon("MONEY_BILL_WAVE", "") ..
+            u8("Общий доход: $") ..
+            formatNumber(totalForPeriod)
+        )
+
+        imgui.Text(
+            getIcon("COINS", "") ..
+            u8("AZ-Coins: ") ..
+            formatNumber(totalAzForPeriod) ..
+            " AZ"
+        )
+    imgui.EndChild()
+
+    imgui.Dummy(imgui.ImVec2(0, 5))
+end
+
+
+
                     
-                    local function drawProjectionCard(title_label, icon_name, multiplier)
-                        imgui.TextColored(imgui.ImVec4(0.18, 0.80, 0.44, 1.00), getIcon(icon_name, "") .. u8(title_label))
-                        imgui.BeginChild("##card_" .. title_label, imgui.ImVec2(0, 70), true)
-                            imgui.Text(getIcon("DOLLAR_SIGN", "") .. u8("Зарплата: $") .. formatNumber(last_w * multiplier))
-                            imgui.Text(getIcon("CREDIT_CARD", "") .. u8("Депозит: $") .. formatNumber(last_d * multiplier))
-                            imgui.Text(getIcon("COINS", "") .. u8("AZ: ") .. formatNumber(last_a * multiplier) .. " AZ")
-                        imgui.EndChild()
-                        imgui.Dummy(imgui.ImVec2(0, 5))
-                    end
-                    
-                    drawProjectionCard("За 1 час:", "CLOCK", 2)
-                    drawProjectionCard("За 24 часа:", "CALENDAR_DAYS", 48)
-                    drawProjectionCard("За месяц:", "CALENDAR_DAYS", 1440)
+                    drawProjectionCard("За 1 час:", "CLOCK", 2, 1)
+drawProjectionCard("За 24 часа:", "CALENDAR_DAYS", 48, 24)
+drawProjectionCard("За месяц:", "CALENDAR_DAYS", 1440, 720)
+
                     
                     imgui.EndPopup()
                 end
@@ -1906,19 +2085,29 @@ drawSidebarTab(6, "CLOCK_ROTATE_LEFT", "История") -- <-- ДОБАВЛЕНО
 
                 imgui.TextColored(imgui.ImVec4(0.18, 0.80, 0.44, 1.00), getIcon("MONEY_BILL_WAVE", "") .. u8("Чистый баланс за сегодня:"))
                 
-                local wage_val = session_stats.wages_accumulated or 0
-                local dep_val = session_stats.dep_growth or 0
-                local biz_val = session_stats.biz_income or 0
+local wage_val = session_stats.wages_accumulated or 0
+local dep_val = session_stats.dep_growth or 0
+local dividend_val = session_stats.dividend_income or 0
+local biz_val = session_stats.biz_income or 0
+
                 local btc_val = session_stats.btc_income or 0
                 local trade_val = session_stats.trade_income or 0
                 local deal_val = session_stats.deal_income or 0
                 local expenses_val = math.abs(tonumber(session_stats.expenses_accumulated) or 0)
                 local az_val = session_stats.az_accumulated or 0
                 
-                local total_earned = wage_val + dep_val + biz_val + btc_val + trade_val + deal_val
+local total_earned =
+    wage_val +
+    dep_val +
+    dividend_val +
+    biz_val +
+    btc_val +
+    trade_val +
+    deal_val
+
                 local net_total = total_earned - expenses_val
 
-                local rows_count = 3
+                local rows_count = 4
                 if biz_val > 0 then rows_count = rows_count + 1 end
                 if btc_val > 0 then rows_count = rows_count + 1 end
                 if trade_val > 0 then rows_count = rows_count + 1 end
@@ -1937,6 +2126,13 @@ drawSidebarTab(6, "CLOCK_ROTATE_LEFT", "История") -- <-- ДОБАВЛЕНО
 
                     drawStatRow("DOLLAR_SIGN", "Зарплата (общая):", "$" .. formatNumber(wage_val), imgui.ImVec4(0.25, 0.85, 0.48, 1.00))
                     drawStatRow("CREDIT_CARD", "Прирост по депозиту:", "$" .. formatNumber(dep_val), imgui.ImVec4(0.25, 0.85, 0.48, 1.00))
+					drawStatRow(
+    "MONEY_BILL_WAVE",
+    "Дивидендный договор:",
+    "$" .. formatNumber(dividend_val),
+    imgui.ImVec4(0.25, 0.85, 0.48, 1.00)
+)
+
                     if biz_val > 0 then drawStatRow("BRIEFCASE", "Прибыль с бизнеса:", "$" .. formatNumber(biz_val), imgui.ImVec4(0.25, 0.85, 0.48, 1.00)) end
                     if btc_val > 0 then drawStatRow("COINS", "Продажа BTC:", "$" .. formatNumber(btc_val), imgui.ImVec4(0.25, 0.85, 0.48, 1.00)) end
                     if trade_val > 0 then drawStatRow("CART_SHOPPING", "Продажа товаров:", "$" .. formatNumber(trade_val), imgui.ImVec4(0.25, 0.85, 0.48, 1.00)) end
@@ -3151,13 +3347,91 @@ local function processDealIncomeMessage(text)
 
     --sampAddChatMessage("{00FF00}[TM] Доход от трейда добавлен в финансы: $" .. formatNumber(amount), -1)
 end
+-- Защита от повторного учёта одинаковых уведомлений
+local tm_last_reward = {
+    mafia = { amount = 0, time = 0 },
+    container = { amount = 0, time = 0 },
+    dividend = { amount = 0, time = 0 }
+}
+
+local function isDuplicateReward(kind, amount)
+    local now = os.clock()
+    local item = tm_last_reward[kind]
+    if item and item.amount == amount and now - item.time < 3.0 then
+        return true
+    end
+    tm_last_reward[kind] = { amount = amount, time = now }
+    return false
+end
+
 
 function samp.onServerMessage(color, text)
     if not text then return end
 
     local cleanText = text:gsub("{%x%x%x%x%x%x}", "")
 	
-	
+	    -- ==================================================
+    -- УЧЕТ AZ И ДИВИДЕНДОВ (МАФИЯ, КОНТЕЙНЕРЫ, ДОГОВОР)
+    -- ==================================================
+
+    -- 1. Монета Новой Мафии (Выдается каждые 30 минут)
+    -- Пример: Вы получили +8 AZ за Монету Новой Мафии
+    if cleanText:find("Монету Новой Мафии", 1, true)
+        and cleanText:find("AZ", 1, true) then
+
+        local amountText = cleanText:match("Вы получили%s*%+[%w%.]*([%d%.,]+)%s*AZ")
+                        or cleanText:match("%+([%d%.,]+)%s*AZ")
+        local amount = parse_numeric_value(amountText)
+
+        if amount > 0 and not isDuplicateReward("mafia", amount) then
+            session_stats.mafia_coin_az = (session_stats.mafia_coin_az or 0) + amount
+            session_stats.az_accumulated = (session_stats.az_accumulated or 0) + amount
+            session_stats.last_mafia_coin_az = amount
+
+            add_history_log("AZ-Coins", "Монета Новой Мафии", "+" .. formatNumber(amount) .. " AZ", false)
+            save_stats_to_file()
+            -- sampAddChatMessage("{00FF00}[TM] Успешно учтено: +" .. amount .. " AZ (Мафия)", -1)
+        end
+    end
+
+    -- 2. Монета Контейнера с Бизнес Центра (1 раз в час)
+    -- Пример: Вы получили +2 AZ COINS на баланс аккаунта!
+    if cleanText:find("Монет", 1, true) 
+        and cleanText:find("Контейнера", 1, true) 
+        and cleanText:find("AZ", 1, true) then
+
+        local amountText = cleanText:match("Вы получили%s*%+[%w%.]*([%d%.,]+)%s*AZ")
+                        or cleanText:match("%+([%d%.,]+)%s*AZ")
+        local amount = parse_numeric_value(amountText)
+
+        if amount > 0 and not isDuplicateReward("container", amount) then
+            session_stats.container_coin_az = (session_stats.container_coin_az or 0) + amount
+            session_stats.az_accumulated = (session_stats.az_accumulated or 0) + amount
+            session_stats.last_container_coin_az = amount
+
+            add_history_log("AZ-Coins", "Монета Контейнера с Бизнес Центра", "+" .. formatNumber(amount) .. " AZ", false)
+            save_stats_to_file()
+            -- sampAddChatMessage("{00FF00}[TM] Успешно учтено: +" .. amount .. " AZ (Контейнеры)", -1)
+        end
+    end
+
+    -- 3. Дивидендный договор (1 раз в час)
+    -- Пример: Вы получили +??30.000 за Дивидентный договор
+    if cleanText:find("Дивидентный договор", 1, true) or cleanText:find("Дивидендный договор", 1, true) then
+        local amountText = cleanText:match("Вы получили%s*%+[%w%.]*([%d%.,]+)%s*за")
+                        or cleanText:match("%+([%d%.,]+)%s*за")
+        local amount = parse_numeric_value(amountText)
+
+        if amount > 0 and not isDuplicateReward("dividend", amount) then
+            session_stats.dividend_income = (session_stats.dividend_income or 0) + amount
+            session_stats.last_payday_dividend = amount
+
+            add_history_log("Дивиденды", "Дивидендный договор", "+$" .. formatNumber(amount), false)
+            save_stats_to_file()
+            -- sampAddChatMessage("{00FF00}[TM] Успешно учтено: +$" .. formatNumber(amount) .. " (Дивиденды)", -1)
+        end
+    end
+
 	    -- === [МАЙНИНГ] ПЕРЕХВАТ ОПЛАТЫ ЭЛЕКТРОЭНЕРГИИ ===
     -- Пример: [Информация] Вы успешно пополнили счёт дома за электроэнергию на 28.640.
     -- === [МАЙНИНГ] ПЕРЕХВАТ ОПЛАТЫ ЭЛЕКТРОЭНЕРГИИ ===
@@ -3379,7 +3653,11 @@ end
     end
 
     -- === ОБРАБОТКА ПОЛУЧЕНИЯ ПРЕДМЕТОВ В ИНВЕНТАРЬ ===
-    if color == -65281 or text:find("Вам добавлен предмет") or text:find("добавлен предмет") then
+        -- === ОБРАБОТКА ПОЛУЧЕНИЯ ПРЕДМЕТОВ В ИНВЕНТАРЬ ===
+    if (color == -65281 or text:find("Вам добавлен предмет") or text:find("добавлен предмет")) 
+       and not cleanText:find("выполнили задание") 
+       and not cleanText:find("БП:") then
+
         local is_player_chat = cleanText:find("говорит:") or cleanText:find("сказал:") or cleanText:find("%[%d+%]%s*:")
         if is_player_chat then return end
 
@@ -3397,12 +3675,15 @@ end
 
                 if itemAdding[0] then
                     local item_tag = cfg.config.itemEmoji ~= "emoji_none" and ("{" .. cfg.config.itemEmoji .. "} ") or ""
+                    
+                    -- Очищаем имя предмета от возможных лишних пробелов по краям
+                    local cleanItemName = tostring(name):gsub("^%s*(.-)%s*$", "%1")
                     local message_to_send = ""
                     
                     if shortMessage[0] then
-                        message_to_send = cleanText:gsub(":item%d+:", "'" .. name .. "'"):gsub("^:[%w%d]+:%s*", "") .. ", используйте клавишу 'Y' или /invent"
+                        message_to_send = ("Вам был добавлен предмет '%s'. Откройте инвентарь, используйте клавишу 'Y' или /invent"):format(cleanItemName)
                     else
-                        message_to_send = (item_tag .. "Вам был добавлен предмет %s {emoji_backpack}"):format(name)
+                        message_to_send = (item_tag .. "Вам был добавлен предмет '%s'. Откройте инвентарь, используйте клавишу 'Y' или /invent {emoji_backpack}"):format(cleanItemName)
                     end
                     
                     sendTelegramMessage(message_to_send)
@@ -3413,12 +3694,13 @@ end
             if existing_name then
                 processItemNotice(existing_name)
             else
-                -- Авто-поиск через API и авто-сохранение в items.json
                 fetchAndSaveMissingItem(itemId, processItemNotice)
             end
             return
         end
     end
+
+
 
 
 
@@ -3434,24 +3716,38 @@ end
         end
     end
 
-    if cleanText:find("^%[Боевой Пропуск%]") or cleanText:find("выполнили задание") then
-        local cleaned = cleanText:gsub("^%s+", ""):gsub("%s+$", "")
-        session_stats.quests_completed = session_stats.quests_completed + 1
-        save_stats_to_file()
+        -- === ОБРАБОТКА КВЕСТОВ И БОЕВОГО ПРОПУСКА ===
+    if cleanText:find("выполнили задание") or cleanText:find("Боевой Пропуск") or cleanText:find("БП:") then
+        local is_player_chat = cleanText:find("говорит:") or cleanText:find("сказал:") or cleanText:find("%[%d+%]%s*:")
+        if not is_player_chat then
+            local cleaned = cleanText:gsub("^%s+", ""):gsub("%s+$", "")
+            
+            -- Засчитываем квест в статистику за день
+            session_stats.quests_completed = (session_stats.quests_completed or 0) + 1
+            save_stats_to_file()
 
-        if quest[0] and cleaned:find("^%[Боевой Пропуск%]") then
-            local body = cleaned:match("^%[Боевой Пропуск%]%s*(.*)") or ""
-            local item_pickup = body:match("забрали предмет%s*-%s*'([^']+)'") or body:match("забрали%s*-%s*'([^']+)'")
-            local task_complete = body:match("выполнили задание%s*-%s*'([^']+)'")
-            local event_type = item_pickup and "Забрал предмет" or (task_complete and "Выполнил задание" or nil)
-            local item_or_task_name = item_pickup or task_complete
+            if quest[0] then
+                -- Вытаскиваем название задания из сообщений Arizona (включая формат 'БП: Double-Gang')
+                local task_name = cleaned:match("выполнили задание%s*-%s*'([^']+)'") 
+                               or cleaned:match("выполнил задание%s*-%s*'([^']+)'")
+                               or cleaned:match("забрали предмет%s*-%s*'([^']+)'")
 
-            if event_type and item_or_task_name then
+                local bp_title = cleaned:match("'([^']+)':%s*Вы успешно выполнили") or "Боевой Пропуск"
+
                 local quest_tag = cfg.config.questEmoji ~= "emoji_none" and ("{" .. cfg.config.questEmoji .. "} ") or ""
-                sendTelegramMessage(quest_tag .. "[Боевой Пропуск]\n" .. event_type .. ": " .. item_or_task_name)
+                
+                if task_name then
+                    sendTelegramMessage(quest_tag .. "[" .. bp_title .. "]\nВыполнил задание: '" .. task_name .. "'")
+                else
+                    -- Если имя задания сложной структуры — очищаем от серверных иконок и отправляем
+                    local msg = cleaned:gsub("^:[%w%d]+:%s*", "")
+                    sendTelegramMessage(quest_tag .. msg)
+                end
             end
+            return
         end
-    end 
+    end
+
 
     local PayDayLineDetector = false
     if cleanText:find('БАНКОВСКИЙ ЧЕК') or cleanText:find('Банковский чек') then
@@ -3468,14 +3764,9 @@ end
         local az_tag = cfg.config.paydayAZEmoji ~= "emoji_none" and "{" .. cfg.config.paydayAZEmoji .. "}" or ""
         
         local keep = false
-        if cleanLine:find('==========') or cleanLine:find('__________') then
-            keep = true
-        elseif cleanLine:find('Текущая сумма в банке:') then
-            cleanLine = cleanLine:gsub(':CASH:', bank_tag)
-            keep = true
-        elseif cleanLine:find('В данный момент у вас') and cleanLine:find('респектов') then
-            keep = true
-        elseif cleanLine:find('Текущая сумма на депозите:') then
+
+        -- Подсчет статистики идет В ЛЮБОМ СЛУЧАЕ (даже если чистка выключена)
+        if cleanLine:find('Текущая сумма на депозите:') then
             local dep_text = cleanLine:match("депозите:.*%((.+)%)")
             local dep_val = dep_text and parse_numeric_value(dep_text) or 0
             session_stats.dep_growth = (session_stats.dep_growth or 0) + dep_val
@@ -3498,24 +3789,29 @@ end
             cleanLine = cleanLine:gsub('AZ', az_tag)
             keep = true
             PayDayLineDetector = true
+        elseif cleanLine:find('Текущая сумма в банке:') then
+            cleanLine = cleanLine:gsub(':CASH:', bank_tag)
+            keep = true
+        elseif cleanLine:find('В данный момент у вас') and cleanLine:find('респектов') then
+            keep = true
+        elseif cleanLine:find('==========') or cleanLine:find('__________') then
+            keep = true
+        end
+
+        -- Если чистка ОТКЛЮЧЕНА -> сохраняем абсолютно все строки между рамками
+        if not cleanPayday[0] then
+            keep = true
         end
         
         if PayDayLineDetector then save_stats_to_file() end
 
         if keep then
             table.insert(listPayday, formatNumbersInText(cleanLine))
-            if (cleanText:find('==========') or cleanText:find('__________')) and #listPayday > 4 then
+            if (cleanText:find('==========') or cleanText:find('__________')) and #listPayday > 2 then
                 if payday[0] then sendTelegramMessage(table.concat(listPayday, '\n')) end
                 getPayday = false 
             end
         end
-    end
-
-    if getPayday and os.time() > paydayTimeout then
-        if #listPayday > 2 and payday[0] then
-            sendTelegramMessage(table.concat(listPayday, '\n'))
-        end
-        getPayday = false 
     end
 end
 
