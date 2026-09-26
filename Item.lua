@@ -58,7 +58,7 @@ local UPDATE_INFO = [[Честно говоря вообще похуй,
 Ну да ладно былает. 
 А у тебя пенис 90 мм.
 А у меня на 2 См меньше
-Вообще не помню что добавлял ранее ну ис последнего зацени 
+Вообще не помню что добавлял ранее ну из последнего зацени 
 В статистике кнопачку весов 
 
 ]]
@@ -267,6 +267,20 @@ goal_edit_type = imgui.new.int(1)
 goal_edit_scope = imgui.new.int(1)
 goal_edit_start_zero = imgui.new.bool(true)
 
+
+-- === СИСТЕМА ДРУЗЕЙ И ОБЛАЧНОЙ СИНХРОНИЗАЦИИ ===
+local friends_sync_enabled = imgui.new.bool(true) -- делиться статистикой
+local new_friend_nick = imgui.new.char[64]("")
+local selected_friend_idx = imgui.new.int(1)
+local friends_data_cache = {} -- кэш скачанных данных друзей
+local last_cloud_upload = 0
+local is_syncing_cloud = false
+
+-- Базовое облачное хранилище (бесплатный REST Firebase / KVDB)
+local CLOUD_SYNC_URL = "https://script-tm-cloud-default-rtdb.firebaseio.com/users"
+
+
+
 local tm_trade_waiting_money = false
 local tm_trade_waiting_time = 0
 local tm_last_money = nil
@@ -351,6 +365,7 @@ local function save_stats_to_file()
         quests_completed = session_stats.quests_completed,
         wages_accumulated = session_stats.wages_accumulated,
 		payday_snapshots = session_stats.payday_snapshots or {},
+friends_list = session_stats.friends_list or {},
 
 		dividend_income = session_stats.dividend_income or 0,
 mafia_coin_az = session_stats.mafia_coin_az or 0,
@@ -1026,6 +1041,7 @@ local function load_stats_from_file()
                    session_stats.mining_electricity = session_stats.mining_electricity or 0
                    session_stats.mining_coolants = session_stats.mining_coolants or 0
    session_stats.payday_snapshots = session_stats.payday_snapshots or {}
+session_stats.friends_list = session_stats.friends_list or {}
 
 
                 session_stats.manually_added_money = session_stats.manually_added_money or 0
@@ -1689,6 +1705,9 @@ imgui.Dummy(imgui.ImVec2(0, 5))
 drawSidebarTab(5, "BAN", "Игнор предметов")
 imgui.Dummy(imgui.ImVec2(0, 5))
 drawSidebarTab(6, "CLOCK_ROTATE_LEFT", "История") -- <-- ДОБАВЛЕНО
+imgui.Dummy(imgui.ImVec2(0, 5))
+drawSidebarTab(7, "USERS", "Друзья") -- КНОПКА ДРУЗЕЙ В МЕНЮ
+
 
 
             imgui.SetCursorPosY(sizeY - 80)
@@ -2464,6 +2483,240 @@ local total_earned =
 
                 imgui.EndChild()
                 imgui.PopStyleColor()
+				
+				
+				
+            elseif currentTab[0] == 7 then
+                imgui.TextColored(imgui.ImVec4(0.95, 0.76, 0.18, 1.00), getIcon("USERS", "") .. u8("Статистика друзей и онлайн-сравнение"))
+                imgui.Separator()
+                imgui.Dummy(imgui.ImVec2(0, 3))
+
+                -- Верхняя панель: Облачный чекбокс и кнопка выгрузки
+                imgui.PushStyleColor(imgui.Col.ChildBg, imgui.ImVec4(0.06, 0.08, 0.11, 1.00))
+                imgui.BeginChild("##top_cloud_bar", imgui.ImVec2(-1, 38), true)
+                    imgui.SetCursorPosY(7)
+                    if imgui.Checkbox(u8("Делиться моей статистикой с друзьями в облаке"), friends_sync_enabled) then
+                        if friends_sync_enabled[0] then uploadMyStatsToCloud(true) end
+                    end
+                    imgui.SameLine(sizeX - 370)
+                    imgui.PushStyleColor(imgui.Col.Button, imgui.ImVec4(0.95, 0.76, 0.18, 0.15))
+                    imgui.PushStyleColor(imgui.Col.ButtonHovered, imgui.ImVec4(0.95, 0.76, 0.18, 0.30))
+                    if imgui.Button(getIcon("CLOUD_ARROW_UP", "") .. u8("Выгрузить мою стат."), imgui.ImVec2(145, 24)) then
+                        uploadMyStatsToCloud(true)
+                        show_arz_notify('success', 'Облако', 'Ваша статистика выгружена для друзей!', 2500)
+                    end
+                    imgui.PopStyleColor(2)
+                imgui.EndChild()
+                imgui.PopStyleColor()
+
+                imgui.Dummy(imgui.ImVec2(0, 4))
+
+                -- === ЛЕВАЯ КОЛОНКА: СПИСОК ДРУЗЕЙ ===
+                imgui.BeginChild("##friends_sidebar_col", imgui.ImVec2(175, sizeY - 145), true)
+                    imgui.TextColored(imgui.ImVec4(0.95, 0.76, 0.18, 1.00), u8("Список друзей:"))
+                    imgui.Dummy(imgui.ImVec2(0, 4))
+
+                    session_stats.friends_list = session_stats.friends_list or {}
+                    local friends = session_stats.friends_list
+
+                    -- Список добавленных друзей
+                    imgui.BeginChild("##friends_buttons_scroll", imgui.ImVec2(-1, sizeY - 265), false)
+                        for i, f_nick in ipairs(friends) do
+                            local is_sel = (selected_friend_idx[0] == i)
+                            if is_sel then
+                                imgui.PushStyleColor(imgui.Col.Button, imgui.ImVec4(0.18, 0.80, 0.44, 0.25))
+                                imgui.PushStyleColor(imgui.Col.ButtonHovered, imgui.ImVec4(0.18, 0.80, 0.44, 0.40))
+                            else
+                                imgui.PushStyleColor(imgui.Col.Button, imgui.ImVec4(0.14, 0.17, 0.23, 0.60))
+                                imgui.PushStyleColor(imgui.Col.ButtonHovered, imgui.ImVec4(0.18, 0.22, 0.30, 0.80))
+                            end
+
+                            local btn_p = imgui.GetCursorScreenPos()
+                            if imgui.Button(u8(f_nick) .. "##fr_btn_" .. i, imgui.ImVec2(155, 30)) then
+                                selected_friend_idx[0] = i
+                                fetchFriendStats(f_nick)
+                            end
+
+                            -- Зеленый индикатор активности справа внутри кнопки
+                            local dl = imgui.GetWindowDrawList()
+                            local has_data = friends_data_cache[f_nick] ~= nil
+                            local dot_col = has_data and imgui.GetColorU32Vec4(imgui.ImVec4(0.18, 0.80, 0.44, 1.00)) or imgui.GetColorU32Vec4(imgui.ImVec4(0.45, 0.50, 0.60, 1.00))
+                            dl:AddCircleFilled(imgui.ImVec2(btn_p.x + 143, btn_p.y + 15), 3.5, dot_col)
+
+                            if is_sel then
+                                dl:AddRect(btn_p, imgui.ImVec2(btn_p.x + 155, btn_p.y + 30), imgui.GetColorU32Vec4(imgui.ImVec4(0.18, 0.80, 0.44, 0.80)), 6.0, 0, 1.2)
+                            end
+
+                            imgui.PopStyleColor(2)
+                            imgui.Dummy(imgui.ImVec2(0, 2))
+                        end
+
+                        if #friends == 0 then
+                            imgui.TextDisabled(u8("Друзья ещё не\nдобавлены."))
+                        end
+                    imgui.EndChild()
+
+                    -- Блок добавления внизу колонки
+                    imgui.Separator()
+                    imgui.Dummy(imgui.ImVec2(0, 2))
+                    imgui.TextDisabled(u8("Ник друга:"))
+                    imgui.SetNextItemWidth(155)
+                    imgui.InputText("##add_f_nick_input", new_friend_nick, ffi.sizeof(new_friend_nick))
+                    imgui.Dummy(imgui.ImVec2(0, 3))
+
+                    imgui.PushStyleColor(imgui.Col.Button, imgui.ImVec4(0.18, 0.80, 0.44, 0.25))
+                    imgui.PushStyleColor(imgui.Col.ButtonHovered, imgui.ImVec4(0.18, 0.80, 0.44, 0.45))
+                    if imgui.Button(u8("+ Добавить друга"), imgui.ImVec2(155, 26)) then
+                        local nick_to_add = ffi.string(new_friend_nick):gsub("%s+", "")
+                        if nick_to_add ~= "" then
+                            local exists = false
+                            for _, fn in ipairs(session_stats.friends_list) do
+                                if fn == nick_to_add then exists = true break end
+                            end
+                            if not exists then
+                                table.insert(session_stats.friends_list, nick_to_add)
+                                save_stats_to_file()
+                                selected_friend_idx[0] = #session_stats.friends_list
+                                fetchFriendStats(nick_to_add)
+                            end
+                            ffi.copy(new_friend_nick, "")
+                        end
+                    end
+                    imgui.PopStyleColor(2)
+                imgui.EndChild()
+
+                imgui.SameLine()
+
+                -- === ПРАВАЯ КОЛОНКА: СТАТИСТИКА И СРАВНЕНИЕ ===
+                imgui.BeginChild("##friend_stats_view_col", imgui.ImVec2(sizeX - 405, sizeY - 145), true)
+                    local current_friend_nick = friends[selected_friend_idx[0]]
+
+                    if not current_friend_nick then
+                        imgui.Dummy(imgui.ImVec2(0, 30))
+                        imgui.TextDisabled(u8("  Выберите друга из списка слева или добавьте нового по нику."))
+                    else
+                        local fr_data = friends_data_cache[current_friend_nick]
+
+                        -- Если данных еще нет, пробуем подтянуть
+                        if not fr_data and not is_syncing_cloud then
+                            fetchFriendStats(current_friend_nick)
+                        end
+
+                        -- Заголовок с ником и кнопкой обновления
+                        imgui.TextColored(imgui.ImVec4(0.18, 0.80, 0.44, 1.00), getIcon("USER", "") .. u8("Игрок: ") .. current_friend_nick)
+                        imgui.SameLine(sizeX - 515)
+                        imgui.PushStyleColor(imgui.Col.Button, imgui.ImVec4(0.18, 0.50, 0.80, 0.25))
+                        imgui.PushStyleColor(imgui.Col.ButtonHovered, imgui.ImVec4(0.18, 0.50, 0.80, 0.45))
+                        if imgui.Button(getIcon("ARROWS_ROTATE", "") .. u8("Обновить"), imgui.ImVec2(95, 24)) then
+                            fetchFriendStats(current_friend_nick)
+                        end
+                        imgui.PopStyleColor(2)
+
+                        local report_date = (fr_data and fr_data.date) and fr_data.date or os.date("%d.%m.%Y")
+                        local report_time = (fr_data and fr_data.updated_at) and fr_data.updated_at or os.date("%H:%M:%S")
+                        imgui.TextDisabled(u8("Дата отчёта: ") .. report_date .. u8(" | Обновлено: ") .. report_time)
+                        imgui.Dummy(imgui.ImVec2(0, 3))
+
+                        -- 1. КАРТОЧКА ЧИСТОГО БАЛАНСА ДРУГА (ТОЧНО КАК ВАША)
+                        imgui.PushStyleColor(imgui.Col.ChildBg, imgui.ImVec4(0.08, 0.10, 0.15, 1.00))
+                        imgui.BeginChild("##fr_balance_card", imgui.ImVec2(-1, 215), true)
+                            imgui.TextColored(imgui.ImVec4(0.18, 0.80, 0.44, 1.00), getIcon("MONEY_BILL_WAVE", "") .. u8("Чистый баланс друга за сегодня:"))
+                            imgui.Dummy(imgui.ImVec2(0, 2))
+
+                            local fr_wage = fr_data and tonumber(fr_data.wage) or 0
+                            local fr_dep = fr_data and tonumber(fr_data.deposit) or 0
+                            local fr_div = fr_data and tonumber(fr_data.dividend) or 0
+                            local fr_biz = fr_data and tonumber(fr_data.biz) or 0
+                            local fr_btc = fr_data and tonumber(fr_data.btc) or 0
+                            local fr_trade = fr_data and tonumber(fr_data.trade) or 0
+                            local fr_exp = fr_data and tonumber(fr_data.expenses) or 0
+                            local fr_net = fr_data and tonumber(fr_data.net_total) or (fr_wage + fr_dep + fr_div + fr_biz + fr_btc + fr_trade - fr_exp)
+                            local fr_az = fr_data and tonumber(fr_data.az) or 0
+
+                            local function drawFrRow(icon, label, val_text, val_col)
+                                imgui.TextColored(imgui.ImVec4(0.88, 0.89, 0.92, 1.00), getIcon(icon, "") .. u8(label))
+                                imgui.SameLine(180)
+                                imgui.TextColored(val_col or imgui.ImVec4(0.25, 0.85, 0.48, 1.00), val_text)
+                            end
+
+                            drawFrRow("DOLLAR_SIGN", "Зарплата (общая):", "$" .. formatNumber(fr_wage))
+                            drawFrRow("CREDIT_CARD", "Прирост по депозиту:", "$" .. formatNumber(fr_dep))
+                            drawFrRow("MONEY_BILL_WAVE", "Дивидендный договор:", "$" .. formatNumber(fr_div))
+                            drawFrRow("BRIEFCASE", "Прибыль с бизнеса:", "$" .. formatNumber(fr_biz))
+                            drawFrRow("COINS", "Продажа BTC:", "$" .. formatNumber(fr_btc))
+                            drawFrRow("CART_SHOPPING", "Продажа товаров:", "$" .. formatNumber(fr_trade))
+                            drawFrRow("TRASH", "Траты за сегодня:", "-$" .. formatNumber(fr_exp), imgui.ImVec4(0.95, 0.26, 0.26, 1.00))
+                            
+                            imgui.Separator()
+                            drawFrRow("MONEY_BILL_WAVE", "Итого чистый баланс:", "$" .. formatNumber(fr_net), imgui.ImVec4(0.98, 0.78, 0.20, 1.00))
+                            drawFrRow("COINS", "Заработано AZ-Coins:", formatNumber(fr_az) .. " AZ", imgui.ImVec4(0.98, 0.78, 0.20, 1.00))
+                        imgui.EndChild()
+                        imgui.PopStyleColor()
+
+                        imgui.Dummy(imgui.ImVec2(0, 4))
+
+                        -- 2. БЛОК СРАВНЕНИЯ (ВЫ ПРОТИВ ДРУГА)
+                        local my_net = getCurrentIncome()
+                        local diff_money = my_net - fr_net
+                        local my_az = session_stats.az_accumulated or 0
+                        local diff_az = my_az - fr_az
+                        local is_i_win = diff_money >= 0
+
+                        local function formatCompactM(val)
+                            local abs_val = math.abs(val)
+                            if abs_val >= 1000000000 then
+                                return string.format("%.2fB", abs_val / 1000000000)
+                            elseif abs_val >= 1000000 then
+                                return string.format("%.0fM", abs_val / 1000000)
+                            else
+                                return formatNumber(abs_val)
+                            end
+                        end
+
+                        if is_i_win then
+                            -- === СЦЕНАРИЙ 1: ВЫ ЛИДИРУЕТЕ (ЗЕЛЕНЫЙ ФОН) ===
+                            imgui.PushStyleColor(imgui.Col.ChildBg, imgui.ImVec4(0.18, 0.80, 0.44, 0.08))
+                            imgui.BeginChild("##comp_win_box", imgui.ImVec2(-1, 95), true)
+                                imgui.TextColored(imgui.ImVec4(0.95, 0.76, 0.18, 1.00), getIcon("CROWN", "??") .. u8("Вы лидируете в сегодняшнем фарме!"))
+                                imgui.TextColored(imgui.ImVec4(0.64, 0.89, 0.84, 1.00), u8("Ваш доход ($" .. formatCompactM(my_net) .. ") выше дохода " .. current_friend_nick .. " ($" .. formatCompactM(fr_net) .. ")"))
+                                imgui.Separator()
+                                imgui.Dummy(imgui.ImVec2(0, 2))
+
+                                imgui.TextDisabled(u8("Разница по виртам: "))
+                                imgui.SameLine()
+                                imgui.TextColored(imgui.ImVec4(0.18, 0.80, 0.44, 1.00), "+$" .. formatNumber(diff_money))
+
+                                imgui.SameLine(180)
+                                imgui.TextDisabled(u8("Разница по AZ: "))
+                                imgui.SameLine()
+                                local az_pref = diff_az >= 0 and "+" or ""
+                                local az_c = diff_az >= 0 and imgui.ImVec4(0.18, 0.80, 0.44, 1.00) or imgui.ImVec4(0.95, 0.26, 0.26, 1.00)
+                                imgui.TextColored(az_c, az_pref .. formatNumber(diff_az) .. " AZ")
+                            imgui.EndChild()
+                            imgui.PopStyleColor()
+                        else
+                            -- === СЦЕНАРИЙ 2: ДРУГ ОПЕРЕЖАЕТ (КРАСНЫЙ ФОН) ===
+                            imgui.PushStyleColor(imgui.Col.ChildBg, imgui.ImVec4(0.95, 0.26, 0.26, 0.08))
+                            imgui.BeginChild("##comp_lose_box", imgui.ImVec2(-1, 95), true)
+                                imgui.TextColored(imgui.ImVec4(0.95, 0.35, 0.35, 1.00), getIcon("ARROW_TREND_DOWN", "??") .. u8(current_friend_nick .. " опережает вас по прибыли!"))
+                                imgui.TextColored(imgui.ImVec4(0.94, 0.58, 0.54, 1.00), u8("Доход друга ($" .. formatCompactM(fr_net) .. ") превышает ваш доход ($" .. formatCompactM(my_net) .. ")"))
+                                imgui.Separator()
+                                imgui.Dummy(imgui.ImVec2(0, 2))
+
+                                imgui.TextDisabled(u8("Вам не хватает до друга: "))
+                                imgui.SameLine()
+                                imgui.TextColored(imgui.ImVec4(0.95, 0.26, 0.26, 1.00), "-$" .. formatNumber(math.abs(diff_money)))
+
+                                imgui.SameLine(180)
+                                imgui.TextDisabled(u8("Отставание по AZ: "))
+                                imgui.SameLine()
+                                local az_pref = diff_az >= 0 and "+" or ""
+                                local az_c = diff_az >= 0 and imgui.ImVec4(0.18, 0.80, 0.44, 1.00) or imgui.ImVec4(0.95, 0.26, 0.26, 1.00)
+                                imgui.TextColored(az_c, az_pref .. formatNumber(diff_az) .. " AZ")
+                        end
+                    end
+                imgui.EndChild()
+            
             end
             imgui.EndChild()
 
@@ -3476,6 +3729,103 @@ local function isDuplicateReward(kind, amount)
     tm_last_reward[kind] = { amount = amount, time = now }
     return false
 end
+
+
+-- === ВЫГРУЗКА СВОЕЙ СТАТИСТИКИ В ОБЛАКО ===
+-- === ВЫГРУЗКА И ПОЛУЧЕНИЕ СТАТИСТИКИ ИЗ ОБЛАКА ===
+function getMyNickName()
+    if sampIsLocalPlayerSpawned() then
+        local my_id = select(2, sampGetPlayerIdByCharHandle(PLAYER_PED))
+        if my_id then return sampGetPlayerNickname(my_id) end
+    end
+    return "Player"
+end
+
+function uploadMyStatsToCloud(force)
+    if not friends_sync_enabled[0] then return end
+    if not force and os.time() - last_cloud_upload < 120 then return end
+    
+    local my_nick = getMyNickName()
+    if not my_nick or my_nick == "Player" then return end
+    last_cloud_upload = os.time()
+
+    local payload = {
+        nick = my_nick,
+        date = session_stats.last_active_date ~= "" and session_stats.last_active_date or os.date("%d.%m.%Y"),
+        updated_at = os.date("%H:%M:%S"),
+        wage = session_stats.wages_accumulated or 0,
+        deposit = session_stats.dep_growth or 0,
+        dividend = session_stats.dividend_income or 0,
+        biz = session_stats.biz_income or 0,
+        btc = session_stats.btc_income or 0,
+        trade = session_stats.trade_income or 0,
+        deal = session_stats.deal_income or 0,
+        expenses = math.abs(tonumber(session_stats.expenses_accumulated) or 0),
+        net_total = getCurrentIncome(),
+        az = session_stats.az_accumulated or 0
+    }
+
+    -- Сохраняем в локальный кэш
+    friends_data_cache[my_nick] = payload
+
+    if requests_ok then
+        lua_thread.create(function()
+            local requests = require('requests')
+            local clean_url = string.format("https://kvdb.io/4P2hXk1c7s9A2b3c4d5e/%s", my_nick:gsub("%s+", "_"))
+            pcall(requests.put, clean_url, {
+                data = json.encode(payload),
+                headers = { ["Content-Type"] = "application/json" }
+            })
+        end)
+    end
+end
+
+function fetchFriendStats(friend_nick, callback)
+    if not friend_nick or friend_nick == "" then return end
+    
+    -- Если смотрим себя — моментально отдаем свои текущие данные
+    if friend_nick == getMyNickName() then
+        friends_data_cache[friend_nick] = {
+            nick = friend_nick,
+            date = session_stats.last_active_date ~= "" and session_stats.last_active_date or os.date("%d.%m.%Y"),
+            updated_at = os.date("%H:%M:%S"),
+            wage = session_stats.wages_accumulated or 0,
+            deposit = session_stats.dep_growth or 0,
+            dividend = session_stats.dividend_income or 0,
+            biz = session_stats.biz_income or 0,
+            btc = session_stats.btc_income or 0,
+            trade = session_stats.trade_income or 0,
+            deal = session_stats.deal_income or 0,
+            expenses = math.abs(tonumber(session_stats.expenses_accumulated) or 0),
+            net_total = getCurrentIncome(),
+            az = session_stats.az_accumulated or 0
+        }
+        if callback then callback(true, friends_data_cache[friend_nick]) end
+        return
+    end
+
+    if not requests_ok then return end
+    is_syncing_cloud = true
+
+    lua_thread.create(function()
+        local requests = require('requests')
+        local clean_url = string.format("https://kvdb.io/4P2hXk1c7s9A2b3c4d5e/%s", friend_nick:gsub("%s+", "_"))
+        local ok, resp = pcall(requests.get, clean_url)
+        is_syncing_cloud = false
+
+        if ok and resp.status_code == 200 and resp.text and resp.text ~= "" and resp.text ~= "null" then
+            local dec_ok, data = pcall(json.decode, resp.text)
+            if dec_ok and type(data) == "table" then
+                friends_data_cache[friend_nick] = data
+                if callback then callback(true, data) end
+                return
+            end
+        end
+        if callback then callback(false, nil) end
+    end)
+end
+
+
 
 
 function samp.onServerMessage(color, text)
