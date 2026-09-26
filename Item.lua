@@ -46,7 +46,7 @@ local stats_file_path = script_folder .. "\\ScriptTM_stats.json"
 local ITEMS_DB_URL = "https://raw.githubusercontent.com/dmashmakov2000-coder/item11/main/items.json"
 local LOGO_URL = "https://raw.githubusercontent.com/dmashmakov2000-coder/item11/main/logo1.png"
 
-local SCRIPT_VERSION = "0.4.5"
+local SCRIPT_VERSION = "0.4.6"
 local UPDATE_URL = "https://raw.githubusercontent.com/dmashmakov2000-coder/item11/main/Item.lua"
 local CFG_FILENAME = 'Script [TM].ini'
 
@@ -54,12 +54,9 @@ local ANTIBLOCK_URL = "https://tg.bakh.us"
 local DEFAULT_API = "https://api.telegram.org"
 local wasOpenedByCommand = false
 
-local UPDATE_INFO = [[Честно говоря вообще похуй, 
-Ну да ладно былает. 
-А у тебя пенис 90 мм.
-А у меня на 2 См меньше
-Вообще не помню что добавлял ранее ну из последнего зацени 
-В статистике кнопачку весов 
+local UPDATE_INFO = [[
+Рома купи мне пиццы 
+Пожалуйста 
 
 ]]
 
@@ -2486,63 +2483,64 @@ local total_earned =
 				
 				
 				
-                       elseif currentTab[0] == 7 then
+                           elseif currentTab[0] == 7 then
                 imgui.TextColored(imgui.ImVec4(0.95, 0.76, 0.18, 1.00), getIcon("USERS", "") .. u8("Статистика друзей и онлайн-сравнение"))
                 imgui.Separator()
-                imgui.Dummy(imgui.ImVec2(0, 3))
+                imgui.Dummy(imgui.ImVec2(0, 2))
 
-                -- Верхняя панель: статус работы и кнопка ручной выгрузки
+                -- Верхняя панель: статус работы и кнопка ручной выгрузки (без наплывов)
                 imgui.PushStyleColor(imgui.Col.ChildBg, imgui.ImVec4(0.06, 0.08, 0.11, 1.00))
                 imgui.BeginChild("##top_cloud_bar", imgui.ImVec2(-1, 38), true)
-                    imgui.SetCursorPosY(10)
-                    imgui.TextColored(imgui.ImVec4(0.18, 0.80, 0.44, 1.00), getIcon("CIRCLE_CHECK", "") .. u8("Синхронизация активна (автовыгрузка каждый PayDay в :00)"))
+                    imgui.SetCursorPosY(8)
+                    imgui.SetCursorPosX(10)
+                    imgui.TextColored(imgui.ImVec4(0.18, 0.80, 0.44, 1.00), getIcon("CIRCLE_CHECK", "") .. u8("Облачная синхронизация активна"))
                     
-                    imgui.SameLine(sizeX - 370)
+                    local bar_w = imgui.GetWindowWidth()
+                    imgui.SameLine(bar_w - 155)
+                    imgui.SetCursorPosY(6)
                     imgui.PushStyleColor(imgui.Col.Button, imgui.ImVec4(0.95, 0.76, 0.18, 0.20))
                     imgui.PushStyleColor(imgui.Col.ButtonHovered, imgui.ImVec4(0.95, 0.76, 0.18, 0.35))
                     if imgui.Button(getIcon("CLOUD_ARROW_UP", "") .. u8("Выгрузить сейчас"), imgui.ImVec2(145, 24)) then
                         uploadMyStatsToCloud(true)
-                        show_arz_notify('success', 'Облако', 'Ваша статистика отправлена в облако!', 2500)
                     end
+
                     imgui.PopStyleColor(2)
                 imgui.EndChild()
                 imgui.PopStyleColor()
 
-                imgui.Dummy(imgui.ImVec2(0, 4))
+                imgui.Dummy(imgui.ImVec2(0, 2))
 
-                -- === ЛЕВАЯ КОЛОНКА: СПИСОК ДРУЗЕЙ И УДАЛЕНИЕ ===
-                imgui.BeginChild("##friends_sidebar_col", imgui.ImVec2(185, sizeY - 145), true)
+                -- === ЛЕВАЯ КОЛОНКА: СПИСОК ДРУЗЕЙ ===
+                imgui.BeginChild("##friends_sidebar_col", imgui.ImVec2(175, sizeY - 140), true)
                     imgui.TextColored(imgui.ImVec4(0.95, 0.76, 0.18, 1.00), u8("Список друзей:"))
-                    imgui.Dummy(imgui.ImVec2(0, 4))
+                    imgui.Dummy(imgui.ImVec2(0, 2))
 
                     session_stats.friends_list = session_stats.friends_list or {}
                     local friends = session_stats.friends_list
                     local friend_to_remove = nil
 
-                    imgui.BeginChild("##friends_buttons_scroll", imgui.ImVec2(-1, sizeY - 265), false)
+                    imgui.BeginChild("##friends_buttons_scroll", imgui.ImVec2(-1, sizeY - 250), false)
                         for i, f_nick in ipairs(friends) do
                             local is_sel = (selected_friend_idx[0] == i)
                             
-                            -- Кнопка выбора друга
                             if is_sel then
-                                imgui.PushStyleColor(imgui.Col.Button, imgui.ImVec4(0.18, 0.80, 0.44, 0.25))
-                                imgui.PushStyleColor(imgui.Col.ButtonHovered, imgui.ImVec4(0.18, 0.80, 0.44, 0.40))
+                                imgui.PushStyleColor(imgui.Col.Button, imgui.ImVec4(0.18, 0.80, 0.44, 0.35))
+                                imgui.PushStyleColor(imgui.Col.ButtonHovered, imgui.ImVec4(0.18, 0.80, 0.44, 0.50))
                             else
-                                imgui.PushStyleColor(imgui.Col.Button, imgui.ImVec4(0.14, 0.17, 0.23, 0.60))
-                                imgui.PushStyleColor(imgui.Col.ButtonHovered, imgui.ImVec4(0.18, 0.22, 0.30, 0.80))
+                                imgui.PushStyleColor(imgui.Col.Button, imgui.ImVec4(0.14, 0.17, 0.23, 0.70))
+                                imgui.PushStyleColor(imgui.Col.ButtonHovered, imgui.ImVec4(0.18, 0.22, 0.30, 0.90))
                             end
 
-                            if imgui.Button(u8(f_nick) .. "##fr_btn_" .. i, imgui.ImVec2(130, 30)) then
+                            if imgui.Button(u8(f_nick) .. "##fr_btn_" .. i, imgui.ImVec2(120, 26)) then
                                 selected_friend_idx[0] = i
                                 fetchFriendStats(f_nick)
                             end
                             imgui.PopStyleColor(2)
 
-                            -- Кнопка удаления друга (Красный крестик рядом)
                             imgui.SameLine()
-                            imgui.PushStyleColor(imgui.Col.Button, imgui.ImVec4(0.95, 0.26, 0.26, 0.15))
+                            imgui.PushStyleColor(imgui.Col.Button, imgui.ImVec4(0.95, 0.26, 0.26, 0.20))
                             imgui.PushStyleColor(imgui.Col.ButtonHovered, imgui.ImVec4(0.95, 0.26, 0.26, 0.50))
-                            if imgui.Button("X##del_fr_" .. i, imgui.ImVec2(24, 30)) then
+                            if imgui.Button("X##del_fr_" .. i, imgui.ImVec2(22, 26)) then
                                 friend_to_remove = i
                             end
                             if imgui.IsItemHovered() then
@@ -2552,10 +2550,9 @@ local total_earned =
                             end
                             imgui.PopStyleColor(2)
 
-                            imgui.Dummy(imgui.ImVec2(0, 2))
+                            imgui.Dummy(imgui.ImVec2(0, 1))
                         end
 
-                        -- Обработка удаления
                         if friend_to_remove then
                             table.remove(session_stats.friends_list, friend_to_remove)
                             if selected_friend_idx[0] > #session_stats.friends_list then
@@ -2565,21 +2562,20 @@ local total_earned =
                         end
 
                         if #friends == 0 then
-                            imgui.TextDisabled(u8("Друзья ещё не\nдобавлены."))
+                            imgui.TextDisabled(u8("Друзья пока не\nдобавлены."))
                         end
                     imgui.EndChild()
 
-                    -- Блок добавления внизу колонки
                     imgui.Separator()
                     imgui.Dummy(imgui.ImVec2(0, 2))
                     imgui.TextDisabled(u8("Ник друга:"))
-                    imgui.SetNextItemWidth(165)
+                    imgui.SetNextItemWidth(155)
                     imgui.InputText("##add_f_nick_input", new_friend_nick, ffi.sizeof(new_friend_nick))
-                    imgui.Dummy(imgui.ImVec2(0, 3))
+                    imgui.Dummy(imgui.ImVec2(0, 2))
 
-                    imgui.PushStyleColor(imgui.Col.Button, imgui.ImVec4(0.18, 0.80, 0.44, 0.25))
-                    imgui.PushStyleColor(imgui.Col.ButtonHovered, imgui.ImVec4(0.18, 0.80, 0.44, 0.45))
-                    if imgui.Button(u8("+ Добавить"), imgui.ImVec2(165, 26)) then
+                    imgui.PushStyleColor(imgui.Col.Button, imgui.ImVec4(0.18, 0.80, 0.44, 0.30))
+                    imgui.PushStyleColor(imgui.Col.ButtonHovered, imgui.ImVec4(0.18, 0.80, 0.44, 0.50))
+                    if imgui.Button(u8("+ Добавить"), imgui.ImVec2(155, 26)) then
                         local nick_to_add = ffi.string(new_friend_nick):gsub("%s+", "")
                         if nick_to_add ~= "" then
                             local exists = false
@@ -2601,7 +2597,7 @@ local total_earned =
                 imgui.SameLine()
 
                 -- === ПРАВАЯ КОЛОНКА: СТАТИСТИКА И СРАВНЕНИЕ ===
-                imgui.BeginChild("##friend_stats_view_col", imgui.ImVec2(sizeX - 415, sizeY - 145), true)
+                imgui.BeginChild("##friend_stats_view_col", imgui.ImVec2(0, sizeY - 140), true)
                     local current_friend_nick = friends[selected_friend_idx[0]]
 
                     if not current_friend_nick then
@@ -2609,13 +2605,13 @@ local total_earned =
                         imgui.TextDisabled(u8("  Выберите друга из списка слева или добавьте нового по нику."))
                     else
                         local fr_data = friends_data_cache[current_friend_nick]
+                        local right_w = imgui.GetWindowWidth()
 
-                        -- Заголовок с ником и кнопкой обновления
                         imgui.TextColored(imgui.ImVec4(0.18, 0.80, 0.44, 1.00), getIcon("USER", "") .. u8("Игрок: ") .. current_friend_nick)
-                        imgui.SameLine(sizeX - 525)
-                        imgui.PushStyleColor(imgui.Col.Button, imgui.ImVec4(0.18, 0.50, 0.80, 0.25))
-                        imgui.PushStyleColor(imgui.Col.ButtonHovered, imgui.ImVec4(0.18, 0.50, 0.80, 0.45))
-                        if imgui.Button(getIcon("ARROWS_ROTATE", "") .. u8("Обновить"), imgui.ImVec2(95, 24)) then
+                        imgui.SameLine(right_w - 105)
+                        imgui.PushStyleColor(imgui.Col.Button, imgui.ImVec4(0.18, 0.50, 0.80, 0.30))
+                        imgui.PushStyleColor(imgui.Col.ButtonHovered, imgui.ImVec4(0.18, 0.50, 0.80, 0.50))
+                        if imgui.Button(getIcon("ARROWS_ROTATE", "") .. u8("Обновить"), imgui.ImVec2(95, 22)) then
                             fetchFriendStats(current_friend_nick)
                         end
                         imgui.PopStyleColor(2)
@@ -2631,11 +2627,11 @@ local total_earned =
                             local report_date = fr_data.date or os.date("%d.%m.%Y")
                             local report_time = fr_data.updated_at or os.date("%H:%M:%S")
                             imgui.TextDisabled(u8("Дата отчёта: ") .. report_date .. u8(" | Обновлено: ") .. report_time)
-                            imgui.Dummy(imgui.ImVec2(0, 3))
+                            imgui.Dummy(imgui.ImVec2(0, 2))
 
                             -- Карточка чистого баланса
                             imgui.PushStyleColor(imgui.Col.ChildBg, imgui.ImVec4(0.08, 0.10, 0.15, 1.00))
-                            imgui.BeginChild("##fr_balance_card", imgui.ImVec2(-1, 215), true)
+                            imgui.BeginChild("##fr_balance_card", imgui.ImVec2(-1, 210), true)
                                 imgui.TextColored(imgui.ImVec4(0.18, 0.80, 0.44, 1.00), getIcon("MONEY_BILL_WAVE", "") .. u8("Чистый баланс друга за сегодня:"))
                                 imgui.Dummy(imgui.ImVec2(0, 2))
 
@@ -2649,9 +2645,11 @@ local total_earned =
                                 local fr_net = tonumber(fr_data.net_total) or (fr_wage + fr_dep + fr_div + fr_biz + fr_btc + fr_trade - fr_exp)
                                 local fr_az = tonumber(fr_data.az) or 0
 
+                                local card_inner_w = imgui.GetWindowWidth()
                                 local function drawFrRow(icon, label, val_text, val_col)
                                     imgui.TextColored(imgui.ImVec4(0.88, 0.89, 0.92, 1.00), getIcon(icon, "") .. u8(label))
-                                    imgui.SameLine(180)
+                                    local txt_w = imgui.CalcTextSize(u8(val_text)).x
+                                    imgui.SameLine(math.max(160, card_inner_w - txt_w - 15))
                                     imgui.TextColored(val_col or imgui.ImVec4(0.25, 0.85, 0.48, 1.00), val_text)
                                 end
 
@@ -2669,7 +2667,7 @@ local total_earned =
                             imgui.EndChild()
                             imgui.PopStyleColor()
 
-                            imgui.Dummy(imgui.ImVec2(0, 4))
+                            imgui.Dummy(imgui.ImVec2(0, 3))
 
                             -- Блок сравнения
                             local my_net = getCurrentIncome()
@@ -2683,26 +2681,27 @@ local total_earned =
                                 if abs_val >= 1000000000 then
                                     return string.format("%.2fB", abs_val / 1000000000)
                                 elseif abs_val >= 1000000 then
-                                    return string.format("%.0fM", abs_val / 1000000)
+                                    return string.format("%.1fM", abs_val / 1000000)
                                 else
                                     return formatNumber(abs_val)
                                 end
                             end
 
                             if is_i_win then
-                                imgui.PushStyleColor(imgui.Col.ChildBg, imgui.ImVec4(0.18, 0.80, 0.44, 0.08))
-                                imgui.BeginChild("##comp_win_box", imgui.ImVec2(-1, 95), true)
+                                imgui.PushStyleColor(imgui.Col.ChildBg, imgui.ImVec4(0.18, 0.80, 0.44, 0.10))
+                                imgui.BeginChild("##comp_win_box", imgui.ImVec2(-1, 98), true)
                                     imgui.TextColored(imgui.ImVec4(0.95, 0.76, 0.18, 1.00), getIcon("CROWN", "") .. u8("Вы лидируете в сегодняшнем фарме!"))
-                                    imgui.TextColored(imgui.ImVec4(0.64, 0.89, 0.84, 1.00), u8("Ваш доход ($" .. formatCompactM(my_net) .. ") выше дохода " .. current_friend_nick .. " ($" .. formatCompactM(fr_net) .. ")"))
+                                    imgui.TextWrapped(u8("Ваш доход ($" .. formatCompactM(my_net) .. ") выше дохода " .. current_friend_nick .. " ($" .. formatCompactM(fr_net) .. ")"))
                                     imgui.Separator()
-                                    imgui.Dummy(imgui.ImVec2(0, 2))
+                                    imgui.Dummy(imgui.ImVec2(0, 1))
 
                                     imgui.TextDisabled(u8("Разница по виртам: "))
                                     imgui.SameLine()
                                     imgui.TextColored(imgui.ImVec4(0.18, 0.80, 0.44, 1.00), "+$" .. formatNumber(diff_money))
 
-                                    imgui.SameLine(180)
-                                    imgui.TextDisabled(u8("Разница по AZ: "))
+                                    local comp_w = imgui.GetWindowWidth()
+                                    imgui.SameLine(math.max(160, comp_w - 130))
+                                    imgui.TextDisabled(u8("AZ: "))
                                     imgui.SameLine()
                                     local az_pref = diff_az >= 0 and "+" or ""
                                     local az_c = diff_az >= 0 and imgui.ImVec4(0.18, 0.80, 0.44, 1.00) or imgui.ImVec4(0.95, 0.26, 0.26, 1.00)
@@ -2710,19 +2709,20 @@ local total_earned =
                                 imgui.EndChild()
                                 imgui.PopStyleColor()
                             else
-                                imgui.PushStyleColor(imgui.Col.ChildBg, imgui.ImVec4(0.95, 0.26, 0.26, 0.08))
-                                imgui.BeginChild("##comp_lose_box", imgui.ImVec2(-1, 95), true)
+                                imgui.PushStyleColor(imgui.Col.ChildBg, imgui.ImVec4(0.95, 0.26, 0.26, 0.10))
+                                imgui.BeginChild("##comp_lose_box", imgui.ImVec2(-1, 98), true)
                                     imgui.TextColored(imgui.ImVec4(0.95, 0.35, 0.35, 1.00), getIcon("ARROW_TREND_DOWN", "") .. u8(current_friend_nick .. " опережает вас по прибыли!"))
-                                    imgui.TextColored(imgui.ImVec4(0.94, 0.58, 0.54, 1.00), u8("Доход друга ($" .. formatCompactM(fr_net) .. ") превышает ваш доход ($" .. formatCompactM(my_net) .. ")"))
+                                    imgui.TextWrapped(u8("Доход друга ($" .. formatCompactM(fr_net) .. ") превышает ваш доход ($" .. formatCompactM(my_net) .. ")"))
                                     imgui.Separator()
-                                    imgui.Dummy(imgui.ImVec2(0, 2))
+                                    imgui.Dummy(imgui.ImVec2(0, 1))
 
-                                    imgui.TextDisabled(u8("Вам не хватает до друга: "))
+                                    imgui.TextDisabled(u8("Не хватает до друга: "))
                                     imgui.SameLine()
                                     imgui.TextColored(imgui.ImVec4(0.95, 0.26, 0.26, 1.00), "-$" .. formatNumber(math.abs(diff_money)))
 
-                                    imgui.SameLine(180)
-                                    imgui.TextDisabled(u8("Отставание по AZ: "))
+                                    local comp_w = imgui.GetWindowWidth()
+                                    imgui.SameLine(math.max(160, comp_w - 130))
+                                    imgui.TextDisabled(u8("AZ: "))
                                     imgui.SameLine()
                                     local az_pref = diff_az >= 0 and "+" or ""
                                     local az_c = diff_az >= 0 and imgui.ImVec4(0.18, 0.80, 0.44, 1.00) or imgui.ImVec4(0.95, 0.26, 0.26, 1.00)
@@ -3761,6 +3761,37 @@ function getMyNickName()
     return "Player"
 end
 
+-- === УНИВЕРСАЛЬНЫЙ ОБРАБОТЧИК ЗАПРОСОВ (ПОДДЕРЖКА GET, POST, PUT ДЛЯ MOONLOADER) ===
+local function safe_http_call(method, url, data_str, headers)
+    local req = require('requests')
+    local options = {
+        headers = headers or {},
+        data = data_str,
+        timeout = 7.0
+    }
+    if method == "PUT" then
+        if req.put then
+            return req.put(url, options)
+        elseif req.request then
+            return req.request("PUT", url, options)
+        end
+    elseif method == "POST" then
+        if req.post then
+            return req.post(url, options)
+        elseif req.request then
+            return req.request("POST", url, options)
+        end
+    elseif method == "GET" then
+        if req.get then
+            return req.get(url, options)
+        elseif req.request then
+            return req.request("GET", url, options)
+        end
+    end
+    error("Метод " .. tostring(method) .. " не поддерживается текущей версией requests.lua")
+end
+
+-- === ВЫГРУЗКА СТАТИСТИКИ В ОБЛАКО (JSONBin.io) ===
 function uploadMyStatsToCloud(force)
     local my_nick = getMyNickName()
     if not my_nick or my_nick == "Player" then return end
@@ -3788,49 +3819,65 @@ function uploadMyStatsToCloud(force)
 
     if requests_ok then
         lua_thread.create(function()
-            local requests = require('requests')
+            local payload_json = json.encode(payload)
             local bin_id = session_stats.jsonbin_id
 
             if bin_id and bin_id ~= "" then
-                -- 1. Если корзина уже создана — обновляем её
+                -- 1. Корзина уже существует — обновляем ее данные через PUT
                 local put_url = "https://api.jsonbin.io/v3/b/" .. bin_id
                 local headers = {
                     ["Content-Type"] = "application/json",
-                    ["X-Master-Key"] = JSONBIN_KEY
+                    ["X-Master-Key"] = JSONBIN_KEY,
+                    ["Content-Length"] = tostring(#payload_json)
                 }
-                local ok, resp = pcall(requests.put, put_url, {
-                    data = json.encode(payload),
-                    headers = headers,
-                    timeout = 6.0
-                })
+                
+                local ok, resp = pcall(safe_http_call, "PUT", put_url, payload_json, headers)
                 if ok and resp and resp.status_code == 200 then
                     print("[TM Cloud] Статистика успешно обновлена в корзине: " .. bin_id)
-                else
-                    -- Если корзина была удалена вручную на сайте, пробуем создать заново
+                    if force then
+                        sampAddChatMessage("{00FF00}[TM Облако] Статистика успешно обновлена на сервере!", -1)
+                    end
+                elseif ok and resp and resp.status_code == 404 then
+                    -- Корзина была вручную удалена на сайте — сбрасываем и создадим новую
                     session_stats.jsonbin_id = nil
                     save_stats_to_file()
+                    uploadMyStatsToCloud(force)
+                else
+                    local err_code = (resp and resp.status_code) and tostring(resp.status_code) or "Timeout/Error"
+                    local err_body = (resp and resp.text) and tostring(resp.text) or tostring(resp)
+                    print(string.format("[TM Cloud Error PUT] Код: %s | Ответ: %s", err_code, err_body))
+                    if force then
+                        sampAddChatMessage(string.format("{FF6347}[TM Облако] Ошибка обновления (%s): %s", err_code, err_body:sub(1, 100)), -1)
+                    end
                 end
             else
-                -- 2. Если корзины еще нет — создаем новую
+                -- 2. Корзины еще нет — создаем одну постоянную через POST
                 local post_url = "https://api.jsonbin.io/v3/b"
                 local headers = {
                     ["Content-Type"] = "application/json",
                     ["X-Master-Key"] = JSONBIN_KEY,
                     ["X-Bin-Name"] = "TM_" .. my_nick:gsub("%s+", "_"),
-                    ["X-Bin-Private"] = "false"
+                    ["X-Bin-Private"] = "false",
+                    ["Content-Length"] = tostring(#payload_json)
                 }
-                local ok, resp = pcall(requests.post, post_url, {
-                    data = json.encode(payload),
-                    headers = headers,
-                    timeout = 6.0
-                })
-
+                
+                local ok, resp = pcall(safe_http_call, "POST", post_url, payload_json, headers)
                 if ok and resp and (resp.status_code == 200 or resp.status_code == 201) and resp.text then
                     local dec_ok, res = pcall(json.decode, resp.text)
                     if dec_ok and res and res.metadata and res.metadata.id then
                         session_stats.jsonbin_id = res.metadata.id
                         save_stats_to_file()
-                        print("[TM Cloud] Создана новая корзина ID: " .. res.metadata.id)
+                        print("[TM Cloud] Создана постоянная корзина ID: " .. res.metadata.id)
+                        if force then
+                            sampAddChatMessage("{00FF00}[TM Облако] Создана корзина и данные выгружены!", -1)
+                        end
+                    end
+                else
+                    local err_code = (resp and resp.status_code) and tostring(resp.status_code) or "Failed"
+                    local err_body = (resp and resp.text) and tostring(resp.text) or tostring(resp)
+                    print(string.format("[TM Cloud Error POST] Код: %s | Ответ: %s", err_code, err_body))
+                    if force then
+                        sampAddChatMessage(string.format("{FF6347}[TM Облако] Ошибка создания (%s): %s", err_code, err_body:sub(1, 100)), -1)
                     end
                 end
             end
