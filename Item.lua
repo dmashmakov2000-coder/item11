@@ -46,7 +46,7 @@ local stats_file_path = script_folder .. "\\ScriptTM_stats.json"
 local ITEMS_DB_URL = "https://raw.githubusercontent.com/dmashmakov2000-coder/item11/main/items.json"
 local LOGO_URL = "https://raw.githubusercontent.com/dmashmakov2000-coder/item11/main/logo1.png"
 
-local SCRIPT_VERSION = "0.4.4"
+local SCRIPT_VERSION = "0.4.5"
 local UPDATE_URL = "https://raw.githubusercontent.com/dmashmakov2000-coder/item11/main/Item.lua"
 local CFG_FILENAME = 'Script [TM].ini'
 
@@ -364,16 +364,18 @@ local function save_stats_to_file()
         time_in_game = session_stats.time_in_game,
         quests_completed = session_stats.quests_completed,
         wages_accumulated = session_stats.wages_accumulated,
-		payday_snapshots = session_stats.payday_snapshots or {},
-friends_list = session_stats.friends_list or {},
+        payday_snapshots = session_stats.payday_snapshots or {},
+        friends_list = session_stats.friends_list or {},
+        jsonbin_id = session_stats.jsonbin_id or "", -- сохраняем ID корзины
 
-		dividend_income = session_stats.dividend_income or 0,
-mafia_coin_az = session_stats.mafia_coin_az or 0,
-container_coin_az = session_stats.container_coin_az or 0,
+        dividend_income = session_stats.dividend_income or 0,
+        mafia_coin_az = session_stats.mafia_coin_az or 0,
+        container_coin_az = session_stats.container_coin_az or 0,
 
-last_payday_dividend = session_stats.last_payday_dividend or 0,
-last_mafia_coin_az = session_stats.last_mafia_coin_az or 0,
-last_container_coin_az = session_stats.last_container_coin_az or 0,
+        last_payday_dividend = session_stats.last_payday_dividend or 0,
+        last_mafia_coin_az = session_stats.last_mafia_coin_az or 0,
+        last_container_coin_az = session_stats.last_container_coin_az or 0,
+        last_payday_rep_az = session_stats.last_payday_rep_az or 0, -- СОХРАНЯЕМ AZ ЗА РЕСПЕКТЫ!
 
         dep_growth = session_stats.dep_growth,
         biz_income = session_stats.biz_income,
@@ -381,14 +383,11 @@ last_container_coin_az = session_stats.last_container_coin_az or 0,
         az_accumulated = session_stats.az_accumulated,
         trade_income = session_stats.trade_income or 0,
         deal_income = session_stats.deal_income or 0,
-		
-		           mining_expenses = session_stats.mining_expenses or 0,
-           mining_electricity = session_stats.mining_electricity or 0,
-           mining_coolants = session_stats.mining_coolants or 0,
-   
-
-		
-		
+  
+        mining_expenses = session_stats.mining_expenses or 0,
+        mining_electricity = session_stats.mining_electricity or 0,
+        mining_coolants = session_stats.mining_coolants or 0,
+  
         expenses_accumulated = math.abs(tonumber(session_stats.expenses_accumulated) or 0),
 
         manually_added_money = session_stats.manually_added_money,
@@ -407,9 +406,8 @@ last_container_coin_az = session_stats.last_container_coin_az or 0,
         goal_start_from_zero = session_stats.goal_start_from_zero or false,
         goal_start_money = session_stats.goal_start_money or 0,
         goal_start_az = session_stats.goal_start_az or 0,
-ignored_items = session_stats.ignored_items or {},
-tx_history = session_stats.tx_history or {} -- <-- ДОБАВИТЬ ЭТУ СТРОКУ
-
+        ignored_items = session_stats.ignored_items or {},
+        tx_history = session_stats.tx_history or {}
     }
     local f = io.open(stats_file_path, "w")
     if f then
@@ -417,6 +415,7 @@ tx_history = session_stats.tx_history or {} -- <-- ДОБАВИТЬ ЭТУ СТРОКУ
         f:close()
     end
 end
+
 
 local function saveDayToHistory(date_str)
     if not date_str or date_str == "" then return end
@@ -1037,12 +1036,17 @@ local function load_stats_from_file()
             local ok, decoded = pcall(json.decode, content)
             if ok and decoded then
                 session_stats = decoded
-                                   session_stats.mining_expenses = session_stats.mining_expenses or 0
-                   session_stats.mining_electricity = session_stats.mining_electricity or 0
-                   session_stats.mining_coolants = session_stats.mining_coolants or 0
-   session_stats.payday_snapshots = session_stats.payday_snapshots or {}
-session_stats.friends_list = session_stats.friends_list or {}
+                session_stats.mining_expenses = session_stats.mining_expenses or 0
+                session_stats.mining_electricity = session_stats.mining_electricity or 0
+                session_stats.mining_coolants = session_stats.mining_coolants or 0
+                session_stats.payday_snapshots = session_stats.payday_snapshots or {}
+                session_stats.friends_list = session_stats.friends_list or {}
+                session_stats.jsonbin_id = session_stats.jsonbin_id or nil
 
+                session_stats.last_payday_rep_az = session_stats.last_payday_rep_az or 0 -- ЗАГРУЖАЕМ AZ ЗА РЕСПЕКТЫ!
+                session_stats.last_payday_dividend = session_stats.last_payday_dividend or 0
+                session_stats.last_mafia_coin_az = session_stats.last_mafia_coin_az or 0
+                session_stats.last_container_coin_az = session_stats.last_container_coin_az or 0
 
                 session_stats.manually_added_money = session_stats.manually_added_money or 0
                 session_stats.manually_added_az = session_stats.manually_added_az or 0
@@ -1059,21 +1063,16 @@ session_stats.friends_list = session_stats.friends_list or {}
                 session_stats.goal_start_from_zero = session_stats.goal_start_from_zero or false
                 session_stats.goal_start_money = session_stats.goal_start_money or 0
                 session_stats.goal_start_az = session_stats.goal_start_az or 0
-session_stats.ignored_items = session_stats.ignored_items or {}
-session_stats.tx_history = session_stats.tx_history or {} -- <-- ДОБАВИТЬ ЭТУ СТРОКУ
-
+                session_stats.ignored_items = session_stats.ignored_items or {}
+                session_stats.tx_history = session_stats.tx_history or {}
 
                 if session_stats.last_active_date ~= current_date then
                     session_stats.time_in_game = 0
                     session_stats.quests_completed = 0
                     session_stats.wages_accumulated = 0
-					
-				                       session_stats.mining_expenses = 0
-                       session_stats.mining_electricity = 0
-                       session_stats.mining_coolants = 0
-   
-
-					
+                    session_stats.mining_expenses = 0
+                    session_stats.mining_electricity = 0
+                    session_stats.mining_coolants = 0
                     session_stats.dep_growth = 0
                     session_stats.biz_income = 0
                     session_stats.btc_income = 0
@@ -1090,26 +1089,21 @@ session_stats.tx_history = session_stats.tx_history or {} -- <-- ДОБАВИТЬ ЭТУ СТ
     session_stats.last_active_date = current_date
     session_stats.time_in_game = session_stats.time_in_game or 0
     session_stats.quests_completed = session_stats.quests_completed or 0
-	
-session_stats.wages_accumulated = session_stats.wages_accumulated or 0
-session_stats.dep_growth = session_stats.dep_growth or 0
-session_stats.dividend_income = session_stats.dividend_income or 0
-session_stats.mafia_coin_az = session_stats.mafia_coin_az or 0
-session_stats.container_coin_az = session_stats.container_coin_az or 0
-
-session_stats.last_payday_dividend = session_stats.last_payday_dividend or 0
-session_stats.last_mafia_coin_az = session_stats.last_mafia_coin_az or 0
-session_stats.last_container_coin_az = session_stats.last_container_coin_az or 0
-
-session_stats.biz_income = session_stats.biz_income or 0
-
-	
+    session_stats.wages_accumulated = session_stats.wages_accumulated or 0
+    session_stats.dep_growth = session_stats.dep_growth or 0
+    session_stats.dividend_income = session_stats.dividend_income or 0
+    session_stats.mafia_coin_az = session_stats.mafia_coin_az or 0
+    session_stats.container_coin_az = session_stats.container_coin_az or 0
+    session_stats.last_payday_rep_az = session_stats.last_payday_rep_az or 0
+    session_stats.last_payday_dividend = session_stats.last_payday_dividend or 0
+    session_stats.last_mafia_coin_az = session_stats.last_mafia_coin_az or 0
+    session_stats.last_container_coin_az = session_stats.last_container_coin_az or 0
+    session_stats.biz_income = session_stats.biz_income or 0
     session_stats.btc_income = session_stats.btc_income or 0
     session_stats.az_accumulated = session_stats.az_accumulated or 0
     session_stats.trade_income = session_stats.trade_income or 0
     session_stats.deal_income = session_stats.deal_income or 0
     session_stats.expenses_accumulated = math.abs(tonumber(session_stats.expenses_accumulated or 0))
-
     session_stats.report_sent = session_stats.report_sent or false
     session_stats.manually_added_money = session_stats.manually_added_money or 0
     session_stats.manually_added_az = session_stats.manually_added_az or 0
@@ -1490,6 +1484,7 @@ function main()
 
     lua_thread.create(function()
         local last_tick = os.time()
+        local last_periodic_upload = os.time() -- таймер для облака
         while true do
             wait(1000)
             local current_tick = os.time()
@@ -1500,7 +1495,14 @@ function main()
                 save_stats_to_file()
             end
             
+            -- АВТОМАТИЧЕСКАЯ ВЫГРУЗКА В ОБЛАКО КАЖДЫЕ 5 МИНУТ:
+            if current_tick - last_periodic_upload >= 300 then
+                last_periodic_upload = current_tick
+                uploadMyStatsToCloud(false)
+            end
+
             checkGoalCompletion()
+
 
             local current_date = os.date("%d.%m.%Y")
             if session_stats.last_active_date ~= "" and session_stats.last_active_date ~= current_date then
@@ -1959,7 +1961,7 @@ drawSidebarTab(7, "USERS", "Друзья") -- КНОПКА ДРУЗЕЙ В МЕНЮ
 
                 imgui.SameLine()
 
-                -- 2. Кнопка Прогноза (Красивый график вместо вопроса)
+                -- 2. Кнопка Прогноза (Компактное окно без лишних пустых строк)
                 local trend_icon = (font_loaded and fa_ok and fa and (fa.ARROW_TREND_UP or fa.CHART_LINE)) and (fa.ARROW_TREND_UP or fa.CHART_LINE) or "[+]"
                 imgui.PushStyleColor(imgui.Col.Button, show_projection_pinned[0] and imgui.ImVec4(0.95, 0.76, 0.18, 0.5) or imgui.ImVec4(0.95, 0.76, 0.18, 0.2))
                 imgui.PushStyleColor(imgui.Col.ButtonHovered, imgui.ImVec4(0.95, 0.76, 0.18, 0.4))
@@ -1974,19 +1976,14 @@ drawSidebarTab(7, "USERS", "Друзья") -- КНОПКА ДРУЗЕЙ В МЕНЮ
                 end
                 imgui.PopStyleColor(2)
 
-
-                -- Задаем достаточную высоту под все 4 блока и убираем скроллбар
-                imgui.SetNextWindowSize(imgui.ImVec2(385, 655), imgui.Cond.Always)
-                imgui.PushStyleVarFloat(imgui.StyleVar.ScrollbarSize, 0.0) -- Полностью убирает полосу прокрутки
+                -- Высота окна уменьшена точно под контент (515px) без скролла и пустот
+                imgui.SetNextWindowSize(imgui.ImVec2(385, 560), imgui.Cond.Always)
+                imgui.PushStyleVarFloat(imgui.StyleVar.ScrollbarSize, 0.0)
                 if imgui.BeginPopup("ProjectionPopup") then
                     imgui.TextColored(imgui.ImVec4(0.95, 0.76, 0.18, 1.00), getIcon("CHART_LINE", "") .. u8("Прогноз прибыли (при непрерывной игре)"))
                     imgui.Separator()
-                    imgui.Dummy(imgui.ImVec2(0, 3))
+                    imgui.Dummy(imgui.ImVec2(0, 2))
 
-                    
-					
-					
-					
                     local last_w = session_stats.last_payday_wage or 0
                     local last_d = session_stats.last_payday_dep or 0
                     local last_a = session_stats.last_payday_az or 0
@@ -2005,59 +2002,60 @@ drawSidebarTab(7, "USERS", "Друзья") -- КНОПКА ДРУЗЕЙ В МЕНЮ
                         bonus_text = " (+" .. formatNumber(bonus_az) .. " AZ)"
                     end
 
-                    imgui.BeginChild("##last_payday_card", imgui.ImVec2(0, 115), true)
+                    -- Верхняя карточка текущего PayDay (уменьшена высота со 115 до 95)
+                    -- Заголовок для первой карточки
+                    imgui.TextColored(imgui.ImVec4(0.18, 0.80, 0.44, 1.00), getIcon("CLOCK", "") .. u8("За PayDay:"))
+                    
+                    -- Верхняя карточка текущего PayDay
+                    imgui.BeginChild("##last_payday_card", imgui.ImVec2(0, 105), true)
                         imgui.Text(getIcon("DOLLAR_SIGN", "") .. u8("Зарплата: $") .. formatNumber(last_w))
                         imgui.Text(getIcon("CREDIT_CARD", "") .. u8("Депозит: $") .. formatNumber(last_d))
                         imgui.Text(getIcon("MONEY_BILL_WAVE", "") .. u8("Дивиденд: $") .. formatNumber(last_dividend))
                         imgui.Text(getIcon("MONEY_BILL_WAVE", "") .. u8("Общий доход: $") .. formatNumber(last_payday_total))
                         imgui.Text(getIcon("COINS", "") .. u8("AZ-Coins: ") .. formatNumber(base_payday_az) .. " AZ" .. u8(bonus_text))
                     imgui.EndChild()
+                    imgui.Dummy(imgui.ImVec2(0, 2))
 
 
+                    local function drawProjectionCard(title_label, icon_name, mult, hours_mult)
+                        mult = tonumber(mult) or 1
+                        hours_mult = tonumber(hours_mult) or 1
 
+                        -- Вирты
+                        local totalSalaryDeposit = (last_w + last_d) * mult
+                        local dividendTotal = last_dividend * hours_mult
+                        local totalForPeriod = totalSalaryDeposit + dividendTotal
 
+                        -- AZ: базовый PayDay (16 + EXP + мафия) идет 2 раза в час
+                        local regular_payday_az = last_a + rep_az + mafia_az
+                        local totalRegularAz = regular_payday_az * mult
 
-local function drawProjectionCard(title_label, icon_name, mult, hours_mult)
-    mult = tonumber(mult) or 1
-    hours_mult = tonumber(hours_mult) or 1
+                        -- Часовой бонус (монеты контейнера) 1 раз в час
+                        local totalBonusAz = bonus_az * hours_mult
 
-    -- Вирты
-    local totalSalaryDeposit = (last_w + last_d) * mult
-    local dividendTotal = last_dividend * hours_mult
-    local totalForPeriod = totalSalaryDeposit + dividendTotal
+                        -- Итого AZ
+                        local totalAzForPeriod = totalRegularAz + totalBonusAz
 
-    -- AZ: базовый PayDay (16 + EXP + мафия) идет 2 раза в час
-    local rep_az = session_stats.last_payday_rep_az or 0
-    local mafia_az = session_stats.last_mafia_coin_az or 0
-    local regular_payday_az = last_a + rep_az + mafia_az
-    local totalRegularAz = regular_payday_az * mult
+                        imgui.TextColored(imgui.ImVec4(0.18, 0.80, 0.44, 1.00), getIcon(icon_name, "") .. u8(title_label))
+                        -- Высота карточки уменьшена со 135 до 95
+                        imgui.BeginChild("##card_" .. title_label, imgui.ImVec2(0, 105), true)
+                            imgui.Text(getIcon("DOLLAR_SIGN", "") .. u8("Зарплата: $") .. formatNumber(last_w * mult))
+                            imgui.Text(getIcon("CREDIT_CARD", "") .. u8("Депозит: $") .. formatNumber(last_d * mult))
+                            imgui.Text(getIcon("MONEY_BILL_WAVE", "") .. u8("Дивиденды: $") .. formatNumber(dividendTotal))
+                            imgui.Text(getIcon("MONEY_BILL_WAVE", "") .. u8("Общий доход: $") .. formatNumber(totalForPeriod))
+                            imgui.Text(getIcon("COINS", "") .. u8("AZ-Coins: ") .. formatNumber(totalAzForPeriod) .. " AZ")
+                        imgui.EndChild()
+                        imgui.Dummy(imgui.ImVec2(0, 2))
+                    end
 
-    -- Часовой бонус (монеты контейнера) 1 раз в час
-    local bonus_az = session_stats.last_container_coin_az or 0
-    local totalBonusAz = bonus_az * hours_mult
+                    drawProjectionCard("За 1 час:", "CLOCK", 2, 1)
+                    drawProjectionCard("За 24 часа:", "CALENDAR_DAYS", 48, 24)
+                    drawProjectionCard("За месяц:", "CALENDAR_DAYS", 1440, 720)
 
-    -- Итого AZ
-    local totalAzForPeriod = totalRegularAz + totalBonusAz
-
-    imgui.TextColored(imgui.ImVec4(0.18, 0.80, 0.44, 1.00), getIcon(icon_name, "") .. u8(title_label))
-    imgui.BeginChild("##card_" .. title_label, imgui.ImVec2(0, 135), true)
-        imgui.Text(getIcon("DOLLAR_SIGN", "") .. u8("Зарплата: $") .. formatNumber(last_w * mult))
-        imgui.Text(getIcon("CREDIT_CARD", "") .. u8("Депозит: $") .. formatNumber(last_d * mult))
-        imgui.Text(getIcon("MONEY_BILL_WAVE", "") .. u8("Дивиденды: $") .. formatNumber(dividendTotal))
-        imgui.Text(getIcon("MONEY_BILL_WAVE", "") .. u8("Общий доход: $") .. formatNumber(totalForPeriod))
-        imgui.Text(getIcon("COINS", "") .. u8("AZ-Coins: ") .. formatNumber(totalAzForPeriod) .. " AZ")
-    imgui.EndChild()
-    imgui.Dummy(imgui.ImVec2(0, 5))
-end
-
-drawProjectionCard("За 1 час:", "CLOCK", 2, 1)
-drawProjectionCard("За 24 часа:", "CALENDAR_DAYS", 48, 24)
-drawProjectionCard("За месяц:", "CALENDAR_DAYS", 1440, 720)
-
-
-
-                    
+                    imgui.PopStyleVar()
                     imgui.EndPopup()
+                else
+                    imgui.PopStyleVar()
                 end
 
 
@@ -3752,7 +3750,8 @@ end
 -- === ВЫГРУЗКА СВОЕЙ СТАТИСТИКИ В ОБЛАКО ===
 -- === ВЫГРУЗКА И ПОЛУЧЕНИЕ СТАТИСТИКИ ИЗ ОБЛАКА ===
 -- БАЗОВЫЙ ОБЛАЧНЫЙ СЕРВЕР (REST API / MySQL-Bridge)
-local CLOUD_BASE_URL = "https://kvdb.io/8xQZfBq3GjVwY8k9mR2p/"
+-- === ВЫГРУЗКА И ПОЛУЧЕНИЕ СТАТИСТИКИ ИЗ ОБЛАКА (JSONBin.io) ===
+local JSONBIN_KEY = "$2a$10$b84xNkpepZpIwOvrE5yrEu9zHcKIRlhRhu4Mqp0dP92qNdl3qC9u2"
 
 function getMyNickName()
     if sampIsLocalPlayerSpawned() then
@@ -3790,12 +3789,51 @@ function uploadMyStatsToCloud(force)
     if requests_ok then
         lua_thread.create(function()
             local requests = require('requests')
-            local clean_url = CLOUD_BASE_URL .. my_nick:gsub("%s+", "_")
-            pcall(requests.put, clean_url, {
-                data = json.encode(payload),
-                headers = { ["Content-Type"] = "application/json" },
-                timeout = 2.5
-            })
+            local bin_id = session_stats.jsonbin_id
+
+            if bin_id and bin_id ~= "" then
+                -- 1. Если корзина уже создана — обновляем её
+                local put_url = "https://api.jsonbin.io/v3/b/" .. bin_id
+                local headers = {
+                    ["Content-Type"] = "application/json",
+                    ["X-Master-Key"] = JSONBIN_KEY
+                }
+                local ok, resp = pcall(requests.put, put_url, {
+                    data = json.encode(payload),
+                    headers = headers,
+                    timeout = 6.0
+                })
+                if ok and resp and resp.status_code == 200 then
+                    print("[TM Cloud] Статистика успешно обновлена в корзине: " .. bin_id)
+                else
+                    -- Если корзина была удалена вручную на сайте, пробуем создать заново
+                    session_stats.jsonbin_id = nil
+                    save_stats_to_file()
+                end
+            else
+                -- 2. Если корзины еще нет — создаем новую
+                local post_url = "https://api.jsonbin.io/v3/b"
+                local headers = {
+                    ["Content-Type"] = "application/json",
+                    ["X-Master-Key"] = JSONBIN_KEY,
+                    ["X-Bin-Name"] = "TM_" .. my_nick:gsub("%s+", "_"),
+                    ["X-Bin-Private"] = "false"
+                }
+                local ok, resp = pcall(requests.post, post_url, {
+                    data = json.encode(payload),
+                    headers = headers,
+                    timeout = 6.0
+                })
+
+                if ok and resp and (resp.status_code == 200 or resp.status_code == 201) and resp.text then
+                    local dec_ok, res = pcall(json.decode, resp.text)
+                    if dec_ok and res and res.metadata and res.metadata.id then
+                        session_stats.jsonbin_id = res.metadata.id
+                        save_stats_to_file()
+                        print("[TM Cloud] Создана новая корзина ID: " .. res.metadata.id)
+                    end
+                end
+            end
         end)
     end
 end
@@ -3803,7 +3841,7 @@ end
 function fetchFriendStats(friend_nick, callback)
     if not friend_nick or friend_nick == "" then return end
     
-    -- Если смотрим свой профиль — моментально показываем свои данные
+    -- Если смотрим свой профиль — моментально показываем свои локальные данные
     if friend_nick == getMyNickName() then
         friends_data_cache[friend_nick] = {
             nick = friend_nick,
@@ -3833,20 +3871,46 @@ function fetchFriendStats(friend_nick, callback)
 
     lua_thread.create(function()
         local requests = require('requests')
-        local clean_url = CLOUD_BASE_URL .. friend_nick:gsub("%s+", "_")
-        local ok, resp = pcall(requests.get, clean_url, { timeout = 2.5 })
-        is_syncing_cloud = false
-
-        if ok and resp and resp.status_code == 200 and resp.text and resp.text ~= "" and resp.text ~= "null" then
-            local dec_ok, data = pcall(json.decode, resp.text)
-            if dec_ok and type(data) == "table" and data.nick then
-                friends_data_cache[friend_nick] = data
-                if callback then callback(true, data) end
-                return
+        local clean_nick = friend_nick:gsub("%s+", "_")
+        
+        -- Поиск bin по имени
+        local list_url = "https://api.jsonbin.io/v3/c/bins"
+        local headers = { ["X-Master-Key"] = JSONBIN_KEY }
+        local ok, resp = pcall(requests.get, "https://api.jsonbin.io/v3/b", { headers = headers, timeout = 4.0 })
+        
+        -- Если у друга сохранен прямой Bin ID или ищем запись
+        local target_bin_id = nil
+        if ok and resp and resp.status_code == 200 and resp.text then
+            local dec_ok, list = pcall(json.decode, resp.text)
+            if dec_ok and type(list) == "table" then
+                for _, b in ipairs(list) do
+                    if b.recordName == "TM_" .. clean_nick then
+                        target_bin_id = b.record
+                        break
+                    end
+                end
             end
         end
-        
-        -- Если данных нет или произошла ошибка
+
+        if target_bin_id then
+            local get_ok, bin_resp = pcall(requests.get, "https://api.jsonbin.io/v3/b/" .. target_bin_id .. "/latest", {
+                headers = headers,
+                timeout = 4.0
+            })
+            is_syncing_cloud = false
+            if get_ok and bin_resp and bin_resp.status_code == 200 and bin_resp.text then
+                local dec_ok2, res2 = pcall(json.decode, bin_resp.text)
+                local data = (dec_ok2 and res2 and res2.record) and res2.record or res2
+                if data and data.nick then
+                    friends_data_cache[friend_nick] = data
+                    if callback then callback(true, data) end
+                    return
+                end
+            end
+        else
+            is_syncing_cloud = false
+        end
+
         if callback then callback(false, nil) end
     end)
 end
