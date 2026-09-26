@@ -46,7 +46,7 @@ local stats_file_path = script_folder .. "\\ScriptTM_stats.json"
 local ITEMS_DB_URL = "https://raw.githubusercontent.com/dmashmakov2000-coder/item11/main/items.json"
 local LOGO_URL = "https://raw.githubusercontent.com/dmashmakov2000-coder/item11/main/logo1.png"
 
-local SCRIPT_VERSION = "0.4.6"
+local SCRIPT_VERSION = "0.4.8"
 local UPDATE_URL = "https://raw.githubusercontent.com/dmashmakov2000-coder/item11/main/Item.lua"
 local CFG_FILENAME = 'Script [TM].ini'
 
@@ -55,8 +55,13 @@ local DEFAULT_API = "https://api.telegram.org"
 local wasOpenedByCommand = false
 
 local UPDATE_INFO = [[
-Рома купи мне пиццы 
-Пожалуйста 
+Слепой дракон, без крыльев и чешуи.
+Он ищет в полумраке путь к укрытию
+В тесную, влажную пещеру.
+Войдя туда пылким и твердым исполином,
+Оставляет свой дар, выходит мокрым и уставшим.  
+
+Что это?
 
 ]]
 
@@ -1984,8 +1989,11 @@ drawSidebarTab(7, "USERS", "Друзья") -- КНОПКА ДРУЗЕЙ В МЕНЮ
                     local last_w = session_stats.last_payday_wage or 0
                     local last_d = session_stats.last_payday_dep or 0
                     local last_a = session_stats.last_payday_az or 0
-                    local last_dividend = session_stats.last_payday_dividend or 0
-                    local last_payday_total = last_w + last_d + last_dividend
+                    local last_dividend_full = session_stats.last_payday_dividend or 0
+                    
+                    -- ДЕЛИМ ДИВИДЕНДЫ ПОПОЛАМ ДЛЯ КАРТОЧКИ 1 PAYDAY:
+                    local last_dividend_half = math.floor(last_dividend_full / 2)
+                    local last_payday_total = last_w + last_d + last_dividend_half
 
                     -- Считаем базовый AZ (чек + респекты + мафия)
                     local rep_az = session_stats.last_payday_rep_az or 0
@@ -1999,20 +2007,17 @@ drawSidebarTab(7, "USERS", "Друзья") -- КНОПКА ДРУЗЕЙ В МЕНЮ
                         bonus_text = " (+" .. formatNumber(bonus_az) .. " AZ)"
                     end
 
-                    -- Верхняя карточка текущего PayDay (уменьшена высота со 115 до 95)
-                    -- Заголовок для первой карточки
+                    -- Верхняя карточка текущего PayDay (с делением дивиденда на 2)
                     imgui.TextColored(imgui.ImVec4(0.18, 0.80, 0.44, 1.00), getIcon("CLOCK", "") .. u8("За PayDay:"))
                     
-                    -- Верхняя карточка текущего PayDay
                     imgui.BeginChild("##last_payday_card", imgui.ImVec2(0, 105), true)
                         imgui.Text(getIcon("DOLLAR_SIGN", "") .. u8("Зарплата: $") .. formatNumber(last_w))
                         imgui.Text(getIcon("CREDIT_CARD", "") .. u8("Депозит: $") .. formatNumber(last_d))
-                        imgui.Text(getIcon("MONEY_BILL_WAVE", "") .. u8("Дивиденд: $") .. formatNumber(last_dividend))
+                        imgui.Text(getIcon("MONEY_BILL_WAVE", "") .. u8("Дивиденд: $") .. formatNumber(last_dividend_half))
                         imgui.Text(getIcon("MONEY_BILL_WAVE", "") .. u8("Общий доход: $") .. formatNumber(last_payday_total))
                         imgui.Text(getIcon("COINS", "") .. u8("AZ-Coins: ") .. formatNumber(base_payday_az) .. " AZ" .. u8(bonus_text))
                     imgui.EndChild()
                     imgui.Dummy(imgui.ImVec2(0, 2))
-
 
                     local function drawProjectionCard(title_label, icon_name, mult, hours_mult)
                         mult = tonumber(mult) or 1
@@ -2020,21 +2025,16 @@ drawSidebarTab(7, "USERS", "Друзья") -- КНОПКА ДРУЗЕЙ В МЕНЮ
 
                         -- Вирты
                         local totalSalaryDeposit = (last_w + last_d) * mult
-                        local dividendTotal = last_dividend * hours_mult
+                        local dividendTotal = last_dividend_full * hours_mult
                         local totalForPeriod = totalSalaryDeposit + dividendTotal
 
-                        -- AZ: базовый PayDay (16 + EXP + мафия) идет 2 раза в час
+                        -- AZ
                         local regular_payday_az = last_a + rep_az + mafia_az
                         local totalRegularAz = regular_payday_az * mult
-
-                        -- Часовой бонус (монеты контейнера) 1 раз в час
                         local totalBonusAz = bonus_az * hours_mult
-
-                        -- Итого AZ
                         local totalAzForPeriod = totalRegularAz + totalBonusAz
 
                         imgui.TextColored(imgui.ImVec4(0.18, 0.80, 0.44, 1.00), getIcon(icon_name, "") .. u8(title_label))
-                        -- Высота карточки уменьшена со 135 до 95
                         imgui.BeginChild("##card_" .. title_label, imgui.ImVec2(0, 105), true)
                             imgui.Text(getIcon("DOLLAR_SIGN", "") .. u8("Зарплата: $") .. formatNumber(last_w * mult))
                             imgui.Text(getIcon("CREDIT_CARD", "") .. u8("Депозит: $") .. formatNumber(last_d * mult))
@@ -2483,16 +2483,17 @@ local total_earned =
 				
 				
 				
-                           elseif currentTab[0] == 7 then
+                        elseif currentTab[0] == 7 then
                 imgui.TextColored(imgui.ImVec4(0.95, 0.76, 0.18, 1.00), getIcon("USERS", "") .. u8("Статистика друзей и онлайн-сравнение"))
                 imgui.Separator()
                 imgui.Dummy(imgui.ImVec2(0, 2))
 
-                -- Верхняя панель: статус работы и кнопка ручной выгрузки (без наплывов)
+                -- Верхняя панель: статус работы и кнопка ручной выгрузки
                 imgui.PushStyleColor(imgui.Col.ChildBg, imgui.ImVec4(0.06, 0.08, 0.11, 1.00))
                 imgui.BeginChild("##top_cloud_bar", imgui.ImVec2(-1, 38), true)
                     imgui.SetCursorPosY(8)
                     imgui.SetCursorPosX(10)
+
                     imgui.TextColored(imgui.ImVec4(0.18, 0.80, 0.44, 1.00), getIcon("CIRCLE_CHECK", "") .. u8("Облачная синхронизация активна"))
                     
                     local bar_w = imgui.GetWindowWidth()
@@ -2503,15 +2504,14 @@ local total_earned =
                     if imgui.Button(getIcon("CLOUD_ARROW_UP", "") .. u8("Выгрузить сейчас"), imgui.ImVec2(145, 24)) then
                         uploadMyStatsToCloud(true)
                     end
-
                     imgui.PopStyleColor(2)
                 imgui.EndChild()
                 imgui.PopStyleColor()
 
                 imgui.Dummy(imgui.ImVec2(0, 2))
 
-                -- === ЛЕВАЯ КОЛОНКА: СПИСОК ДРУЗЕЙ ===
-                imgui.BeginChild("##friends_sidebar_col", imgui.ImVec2(175, sizeY - 140), true)
+                -- === ЛЕВАЯ КОЛОНКА: СПИСОК ДРУЗЕЙ (Ширина увеличена до 195px) ===
+                imgui.BeginChild("##friends_sidebar_col", imgui.ImVec2(195, sizeY - 140), true)
                     imgui.TextColored(imgui.ImVec4(0.95, 0.76, 0.18, 1.00), u8("Список друзей:"))
                     imgui.Dummy(imgui.ImVec2(0, 2))
 
@@ -2531,7 +2531,7 @@ local total_earned =
                                 imgui.PushStyleColor(imgui.Col.ButtonHovered, imgui.ImVec4(0.18, 0.22, 0.30, 0.90))
                             end
 
-                            if imgui.Button(u8(f_nick) .. "##fr_btn_" .. i, imgui.ImVec2(120, 26)) then
+                            if imgui.Button(u8(f_nick) .. "##fr_btn_" .. i, imgui.ImVec2(140, 26)) then
                                 selected_friend_idx[0] = i
                                 fetchFriendStats(f_nick)
                             end
@@ -2569,13 +2569,13 @@ local total_earned =
                     imgui.Separator()
                     imgui.Dummy(imgui.ImVec2(0, 2))
                     imgui.TextDisabled(u8("Ник друга:"))
-                    imgui.SetNextItemWidth(155)
+                    imgui.SetNextItemWidth(175)
                     imgui.InputText("##add_f_nick_input", new_friend_nick, ffi.sizeof(new_friend_nick))
                     imgui.Dummy(imgui.ImVec2(0, 2))
 
                     imgui.PushStyleColor(imgui.Col.Button, imgui.ImVec4(0.18, 0.80, 0.44, 0.30))
                     imgui.PushStyleColor(imgui.Col.ButtonHovered, imgui.ImVec4(0.18, 0.80, 0.44, 0.50))
-                    if imgui.Button(u8("+ Добавить"), imgui.ImVec2(155, 26)) then
+                    if imgui.Button(u8("+ Добавить"), imgui.ImVec2(175, 26)) then
                         local nick_to_add = ffi.string(new_friend_nick):gsub("%s+", "")
                         if nick_to_add ~= "" then
                             local exists = false
@@ -2631,7 +2631,7 @@ local total_earned =
 
                             -- Карточка чистого баланса
                             imgui.PushStyleColor(imgui.Col.ChildBg, imgui.ImVec4(0.08, 0.10, 0.15, 1.00))
-                            imgui.BeginChild("##fr_balance_card", imgui.ImVec2(-1, 210), true)
+                            imgui.BeginChild("##fr_balance_card", imgui.ImVec2(-1, 208), true)
                                 imgui.TextColored(imgui.ImVec4(0.18, 0.80, 0.44, 1.00), getIcon("MONEY_BILL_WAVE", "") .. u8("Чистый баланс друга за сегодня:"))
                                 imgui.Dummy(imgui.ImVec2(0, 2))
 
@@ -2649,7 +2649,7 @@ local total_earned =
                                 local function drawFrRow(icon, label, val_text, val_col)
                                     imgui.TextColored(imgui.ImVec4(0.88, 0.89, 0.92, 1.00), getIcon(icon, "") .. u8(label))
                                     local txt_w = imgui.CalcTextSize(u8(val_text)).x
-                                    imgui.SameLine(math.max(160, card_inner_w - txt_w - 15))
+                                    imgui.SameLine(math.max(140, card_inner_w - txt_w - 15))
                                     imgui.TextColored(val_col or imgui.ImVec4(0.25, 0.85, 0.48, 1.00), val_text)
                                 end
 
@@ -2669,7 +2669,7 @@ local total_earned =
 
                             imgui.Dummy(imgui.ImVec2(0, 3))
 
-                            -- Блок сравнения
+                            -- Блок сравнения (с правильным отступом и без наплывов)
                             local my_net = getCurrentIncome()
                             local diff_money = my_net - fr_net
                             local my_az = session_stats.az_accumulated or 0
@@ -2689,20 +2689,20 @@ local total_earned =
 
                             if is_i_win then
                                 imgui.PushStyleColor(imgui.Col.ChildBg, imgui.ImVec4(0.18, 0.80, 0.44, 0.10))
-                                imgui.BeginChild("##comp_win_box", imgui.ImVec2(-1, 98), true)
+                                imgui.BeginChild("##comp_win_box", imgui.ImVec2(-1, 105), true)
                                     imgui.TextColored(imgui.ImVec4(0.95, 0.76, 0.18, 1.00), getIcon("CROWN", "") .. u8("Вы лидируете в сегодняшнем фарме!"))
                                     imgui.TextWrapped(u8("Ваш доход ($" .. formatCompactM(my_net) .. ") выше дохода " .. current_friend_nick .. " ($" .. formatCompactM(fr_net) .. ")"))
                                     imgui.Separator()
                                     imgui.Dummy(imgui.ImVec2(0, 1))
 
+                                    -- Строка 1: Вирты
                                     imgui.TextDisabled(u8("Разница по виртам: "))
-                                    imgui.SameLine()
+                                    imgui.SameLine(135)
                                     imgui.TextColored(imgui.ImVec4(0.18, 0.80, 0.44, 1.00), "+$" .. formatNumber(diff_money))
 
-                                    local comp_w = imgui.GetWindowWidth()
-                                    imgui.SameLine(math.max(160, comp_w - 130))
-                                    imgui.TextDisabled(u8("AZ: "))
-                                    imgui.SameLine()
+                                    -- Строка 2: AZ
+                                    imgui.TextDisabled(u8("Разница по AZ: "))
+                                    imgui.SameLine(135)
                                     local az_pref = diff_az >= 0 and "+" or ""
                                     local az_c = diff_az >= 0 and imgui.ImVec4(0.18, 0.80, 0.44, 1.00) or imgui.ImVec4(0.95, 0.26, 0.26, 1.00)
                                     imgui.TextColored(az_c, az_pref .. formatNumber(diff_az) .. " AZ")
@@ -2710,20 +2710,20 @@ local total_earned =
                                 imgui.PopStyleColor()
                             else
                                 imgui.PushStyleColor(imgui.Col.ChildBg, imgui.ImVec4(0.95, 0.26, 0.26, 0.10))
-                                imgui.BeginChild("##comp_lose_box", imgui.ImVec2(-1, 98), true)
+                                imgui.BeginChild("##comp_lose_box", imgui.ImVec2(-1, 105), true)
                                     imgui.TextColored(imgui.ImVec4(0.95, 0.35, 0.35, 1.00), getIcon("ARROW_TREND_DOWN", "") .. u8(current_friend_nick .. " опережает вас по прибыли!"))
                                     imgui.TextWrapped(u8("Доход друга ($" .. formatCompactM(fr_net) .. ") превышает ваш доход ($" .. formatCompactM(my_net) .. ")"))
                                     imgui.Separator()
                                     imgui.Dummy(imgui.ImVec2(0, 1))
 
+                                    -- Строка 1: Вирты
                                     imgui.TextDisabled(u8("Не хватает до друга: "))
-                                    imgui.SameLine()
+                                    imgui.SameLine(135)
                                     imgui.TextColored(imgui.ImVec4(0.95, 0.26, 0.26, 1.00), "-$" .. formatNumber(math.abs(diff_money)))
 
-                                    local comp_w = imgui.GetWindowWidth()
-                                    imgui.SameLine(math.max(160, comp_w - 130))
-                                    imgui.TextDisabled(u8("AZ: "))
-                                    imgui.SameLine()
+                                    -- Строка 2: AZ
+                                    imgui.TextDisabled(u8("Разница по AZ: "))
+                                    imgui.SameLine(135)
                                     local az_pref = diff_az >= 0 and "+" or ""
                                     local az_c = diff_az >= 0 and imgui.ImVec4(0.18, 0.80, 0.44, 1.00) or imgui.ImVec4(0.95, 0.26, 0.26, 1.00)
                                     imgui.TextColored(az_c, az_pref .. formatNumber(diff_az) .. " AZ")
@@ -3885,10 +3885,16 @@ function uploadMyStatsToCloud(force)
     end
 end
 
+-- === ТАБЛИЦА ПРЯМЫХ ID (Чтобы всё работало моментально) ===
+local KNOWN_FRIEND_BINS = {
+    ["Dima_Shmakov"] = "6ab7ccfdac6210605af7f0e3",
+    ["Luke_Johnson"] = "6ab7cfafac6210605af7f977"
+}
+
 function fetchFriendStats(friend_nick, callback)
     if not friend_nick or friend_nick == "" then return end
     
-    -- Если смотрим свой профиль — моментально показываем свои локальные данные
+    -- Если смотрим себя
     if friend_nick == getMyNickName() then
         friends_data_cache[friend_nick] = {
             nick = friend_nick,
@@ -3909,43 +3915,39 @@ function fetchFriendStats(friend_nick, callback)
         return
     end
 
-    if not requests_ok then 
-        if callback then callback(false, nil) end
-        return 
-    end
-    
+    if not requests_ok then return end
     is_syncing_cloud = true
 
     lua_thread.create(function()
         local requests = require('requests')
-        local clean_nick = friend_nick:gsub("%s+", "_")
-        
-        -- Поиск bin по имени
-        local list_url = "https://api.jsonbin.io/v3/c/bins"
         local headers = { ["X-Master-Key"] = JSONBIN_KEY }
-        local ok, resp = pcall(requests.get, "https://api.jsonbin.io/v3/b", { headers = headers, timeout = 4.0 })
         
-        -- Если у друга сохранен прямой Bin ID или ищем запись
-        local target_bin_id = nil
-        if ok and resp and resp.status_code == 200 and resp.text then
-            local dec_ok, list = pcall(json.decode, resp.text)
-            if dec_ok and type(list) == "table" then
-                for _, b in ipairs(list) do
-                    if b.recordName == "TM_" .. clean_nick then
-                        target_bin_id = b.record
-                        break
+        -- 1. Сначала ищем ID в нашей "книге контактов"
+        local target_bin_id = KNOWN_FRIEND_BINS[friend_nick]
+
+        -- 2. Если в книге нет, пробуем найти среди всех корзин на аккаунте
+        if not target_bin_id then
+            local list_ok, list_resp = pcall(requests.get, "https://api.jsonbin.io/v3/b", { headers = headers, timeout = 5.0 })
+            if list_ok and list_resp and list_resp.status_code == 200 then
+                local ok_dec, list_data = pcall(json.decode, list_resp.text)
+                if ok_dec and type(list_data) == "table" then
+                    for _, bin in ipairs(list_data) do
+                        if bin.recordName == "TM_" .. friend_nick:gsub("%s+", "_") then
+                            target_bin_id = bin.record
+                            break
+                        end
                     end
                 end
             end
         end
 
+        -- 3. Если нашли ID — качаем данные
         if target_bin_id then
             local get_ok, bin_resp = pcall(requests.get, "https://api.jsonbin.io/v3/b/" .. target_bin_id .. "/latest", {
-                headers = headers,
-                timeout = 4.0
+                headers = headers, timeout = 5.0
             })
             is_syncing_cloud = false
-            if get_ok and bin_resp and bin_resp.status_code == 200 and bin_resp.text then
+            if get_ok and bin_resp and bin_resp.status_code == 200 then
                 local dec_ok2, res2 = pcall(json.decode, bin_resp.text)
                 local data = (dec_ok2 and res2 and res2.record) and res2.record or res2
                 if data and data.nick then
@@ -3954,10 +3956,9 @@ function fetchFriendStats(friend_nick, callback)
                     return
                 end
             end
-        else
-            is_syncing_cloud = false
         end
 
+        is_syncing_cloud = false
         if callback then callback(false, nil) end
     end)
 end
@@ -4372,14 +4373,9 @@ end
 
         -- Если это ЧАСОВОЙ PayDay (в районе :00 минут, например от 55 до 05 минут)
         -- Если это ЧАСОВОЙ PayDay (в районе :00 минут)
+        -- Если это ЧАСОВОЙ PayDay (в районе :00 минут)
         if current_min >= 55 or current_min <= 5 then
             got_container_this_hour = false
-
-            -- АВТОВЫГРУЗКА В ОБЛАКО КАЖДЫЙ ЧАСОВОЙ PAYDAY
-            lua_thread.create(function()
-                wait(3000) -- ждем 3 секунды, чтобы все начисления за пейдей записались в баланс
-                uploadMyStatsToCloud(true)
-            end)
 
             lua_thread.create(function()
                 wait(4000)
@@ -4394,6 +4390,7 @@ end
                 got_container_this_hour = false
             end)
         end
+
 
 
         -- В :30 минут ничего не трогаем, бонус спокойно живет дальше!
