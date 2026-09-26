@@ -46,7 +46,7 @@ local stats_file_path = script_folder .. "\\ScriptTM_stats.json"
 local ITEMS_DB_URL = "https://raw.githubusercontent.com/dmashmakov2000-coder/item11/main/items.json"
 local LOGO_URL = "https://raw.githubusercontent.com/dmashmakov2000-coder/item11/main/logo1.png"
 
-local SCRIPT_VERSION = "0.4.1"
+local SCRIPT_VERSION = "0.4.2"
 local UPDATE_URL = "https://raw.githubusercontent.com/dmashmakov2000-coder/item11/main/Item.lua"
 local CFG_FILENAME = 'Script [TM].ini'
 
@@ -58,7 +58,8 @@ local UPDATE_INFO = [[Честно говоря вообще похуй,
 Ну да ладно былает. 
 А у тебя пенис 90 мм.
 А у меня на 2 См меньше
-
+Вообще не помню что добавлял ранее ну ис последнего зацени 
+В статистике кнопачку весов 
 
 ]]
 
@@ -245,6 +246,12 @@ add_funds_input = imgui.new.char[64]("")
 
 show_chart_window = imgui.new.bool(false)
 show_goal_settings = imgui.new.bool(false)
+
+-- === СИСТЕМА СРАВНЕНИЯ PAYDAY ===
+show_compare_window = imgui.new.bool(false)
+selected_compare_idx = imgui.new.int(1) -- индекс выбранного старого PayDay
+
+
 show_projection_pinned = imgui.new.bool(false)
 is_proj_window_hovered = false
 
@@ -263,6 +270,7 @@ goal_edit_start_zero = imgui.new.bool(true)
 local tm_trade_waiting_money = false
 local tm_trade_waiting_time = 0
 local tm_last_money = nil
+local got_container_this_hour = false
 
 -- === ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ===
 local function formatNumber(amount)
@@ -342,7 +350,8 @@ local function save_stats_to_file()
         time_in_game = session_stats.time_in_game,
         quests_completed = session_stats.quests_completed,
         wages_accumulated = session_stats.wages_accumulated,
-		
+		payday_snapshots = session_stats.payday_snapshots or {},
+
 		dividend_income = session_stats.dividend_income or 0,
 mafia_coin_az = session_stats.mafia_coin_az or 0,
 container_coin_az = session_stats.container_coin_az or 0,
@@ -1016,7 +1025,8 @@ local function load_stats_from_file()
                                    session_stats.mining_expenses = session_stats.mining_expenses or 0
                    session_stats.mining_electricity = session_stats.mining_electricity or 0
                    session_stats.mining_coolants = session_stats.mining_coolants or 0
-   
+   session_stats.payday_snapshots = session_stats.payday_snapshots or {}
+
 
                 session_stats.manually_added_money = session_stats.manually_added_money or 0
                 session_stats.manually_added_az = session_stats.manually_added_az or 0
@@ -1602,11 +1612,13 @@ function modern_style()
     colors[imgui.Col.TextDisabled]     = imgui.ImVec4(0.50, 0.55, 0.63, 1.00)
 end
 
-imgui.OnFrame(function() return window[0] or show_update_popup[0] or show_emoji_selector_modal[0] or show_chart_window[0] or show_goal_settings[0] or show_add_funds_modal[0] end, function(player)
+imgui.OnFrame(function() return window[0] or show_update_popup[0] or show_emoji_selector_modal[0] or show_chart_window[0] or show_goal_settings[0] or show_add_funds_modal[0] or show_compare_window[0] end, function(player)
+
     local resX, resY = getScreenResolution()
  
     if window[0] then
-        local sizeX, sizeY = 700, 500
+        local sizeX, sizeY = 700, 580
+
         imgui.SetNextWindowPos(imgui.ImVec2(resX / 2, resY / 2), imgui.Cond.FirstUseEver, imgui.ImVec2(0.5, 0.5))
         imgui.SetNextWindowSize(imgui.ImVec2(sizeX, sizeY), imgui.Cond.Always)
 
@@ -1908,22 +1920,42 @@ drawSidebarTab(6, "CLOCK_ROTATE_LEFT", "История") -- <-- ДОБАВЛЕНО
             elseif currentTab[0] == 4 then
                 imgui.TextColored(imgui.ImVec4(0.95, 0.76, 0.18, 1.00), getIcon("CHART_LINE", "") .. u8("Ежедневный Финансовый Журнал"))
                 
-                imgui.SameLine(sizeX - 250)
-                local q_icon = (font_loaded and fa_ok and fa and fa.CIRCLE_QUESTION) and fa.CIRCLE_QUESTION or "?"
+                -- Перемещаемся правее под обе кнопки
+                                -- Перемещаемся вправо под обе кнопки
+                imgui.SameLine(sizeX - 285)
+
+                -- 1. Кнопка Сравнения PayDay (Весы)
+                local cmp_icon = (font_loaded and fa_ok and fa and (fa.SCALE_BALANCED or fa.CODE_COMPARE)) and (fa.SCALE_BALANCED or fa.CODE_COMPARE) or "<>"
+                imgui.PushStyleColor(imgui.Col.Button, show_compare_window[0] and imgui.ImVec4(0.18, 0.80, 0.44, 0.5) or imgui.ImVec4(0.18, 0.80, 0.44, 0.2))
+                imgui.PushStyleColor(imgui.Col.ButtonHovered, imgui.ImVec4(0.18, 0.80, 0.44, 0.4))
+                if imgui.Button(cmp_icon .. "##compare_paydays_btn", imgui.ImVec2(28, 24)) then
+                    show_compare_window[0] = not show_compare_window[0]
+                end
+                if imgui.IsItemHovered() then
+                    imgui.BeginTooltip()
+                    imgui.Text(u8("Сравнить два разных PayDay (ранг / льготы / баффы)"))
+                    imgui.EndTooltip()
+                end
+                imgui.PopStyleColor(2)
+
+                imgui.SameLine()
+
+                -- 2. Кнопка Прогноза (Красивый график вместо вопроса)
+                local trend_icon = (font_loaded and fa_ok and fa and (fa.ARROW_TREND_UP or fa.CHART_LINE)) and (fa.ARROW_TREND_UP or fa.CHART_LINE) or "[+]"
                 imgui.PushStyleColor(imgui.Col.Button, show_projection_pinned[0] and imgui.ImVec4(0.95, 0.76, 0.18, 0.5) or imgui.ImVec4(0.95, 0.76, 0.18, 0.2))
                 imgui.PushStyleColor(imgui.Col.ButtonHovered, imgui.ImVec4(0.95, 0.76, 0.18, 0.4))
-                if imgui.Button(q_icon .. "##projection_btn", imgui.ImVec2(28, 24)) then
+                if imgui.Button(trend_icon .. "##projection_btn", imgui.ImVec2(28, 24)) then
                     show_projection_pinned[0] = not show_projection_pinned[0]
                     imgui.OpenPopup("ProjectionPopup")
                 end
-                
-                local btn_hovered = imgui.IsItemHovered()
                 if imgui.IsItemHovered() then
                     imgui.BeginTooltip()
                     imgui.Text(u8("Прогноз прибыли"))
                     imgui.EndTooltip()
                 end
                 imgui.PopStyleColor(2)
+
+
                 
                 imgui.SetNextWindowSize(imgui.ImVec2(380, 510), imgui.Cond.Always)
                 if imgui.BeginPopup("ProjectionPopup") then
@@ -1931,136 +1963,77 @@ drawSidebarTab(6, "CLOCK_ROTATE_LEFT", "История") -- <-- ДОБАВЛЕНО
                     imgui.Separator()
                     imgui.Dummy(imgui.ImVec2(0, 3))
                     
+					
+					
+					
                     local last_w = session_stats.last_payday_wage or 0
                     local last_d = session_stats.last_payday_dep or 0
                     local last_a = session_stats.last_payday_az or 0
                     local last_dividend = session_stats.last_payday_dividend or 0
-local last_mafia_az = session_stats.last_mafia_coin_az or 0
-local last_container_az = session_stats.last_container_coin_az or 0
+                    local last_payday_total = last_w + last_d + last_dividend
 
-local last_payday_total = last_w + last_d
+                    -- Считаем базовый AZ (чек + респекты + мафия)
+                    local rep_az = session_stats.last_payday_rep_az or 0
+                    local mafia_az = session_stats.last_mafia_coin_az or 0
+                    local base_payday_az = last_a + rep_az + mafia_az
 
-local last_payday_total = last_w + last_d + last_dividend
+                    -- Часовой бонус монет контейнера (в :00)
+                    local bonus_az = session_stats.last_container_coin_az or 0
+                    local bonus_text = ""
+                    if bonus_az > 0 then
+                        bonus_text = " (+" .. formatNumber(bonus_az) .. " AZ)"
+                    end
 
--- Считаем сумму всех дополнительных баффов AZ (мафия + контейнеры)
-local last_mafia = session_stats.last_mafia_coin_az or 0
-local last_container = session_stats.last_container_coin_az or 0
-local extra_az_sum = last_mafia + last_container
-
--- Формируем красивую прибавку в скобках, если баффы сработали
-local extra_az_text = ""
-if extra_az_sum > 0 then
-    extra_az_text = " (+" .. formatNumber(extra_az_sum) .. " AZ)"
-end
-
-imgui.BeginChild("##last_payday_card", imgui.ImVec2(0, 115), true)
-    -- 1. Зарплата
-    imgui.Text(
-        getIcon("DOLLAR_SIGN", "") ..
-        u8("Зарплата: $") ..
-        formatNumber(last_w)
-    )
-
-    -- 2. Депозит
-    imgui.Text(
-        getIcon("CREDIT_CARD", "") ..
-        u8("Депозит: $") ..
-        formatNumber(last_d)
-    )
-
-    -- 3. Дивидендный договор
-    imgui.Text(
-        getIcon("MONEY_BILL_WAVE", "") ..
-        u8("Дивиденд: $") ..
-        formatNumber(last_dividend)
-    )
-
-    -- 4. Общий доход
-    imgui.Text(
-        getIcon("MONEY_BILL_WAVE", "") ..
-        u8("Общий доход: $") ..
-        formatNumber(last_payday_total)
-    )
-
-    -- 5. AZ-Coins с баффами в скобках
-    imgui.Text(
-        getIcon("COINS", "") ..
-        u8("AZ-Coins: ") ..
-        formatNumber(last_a) ..
-        " AZ" ..
-        u8(extra_az_text)
-    )
-imgui.EndChild()
+                    imgui.BeginChild("##last_payday_card", imgui.ImVec2(0, 115), true)
+                        imgui.Text(getIcon("DOLLAR_SIGN", "") .. u8("Зарплата: $") .. formatNumber(last_w))
+                        imgui.Text(getIcon("CREDIT_CARD", "") .. u8("Депозит: $") .. formatNumber(last_d))
+                        imgui.Text(getIcon("MONEY_BILL_WAVE", "") .. u8("Дивиденд: $") .. formatNumber(last_dividend))
+                        imgui.Text(getIcon("MONEY_BILL_WAVE", "") .. u8("Общий доход: $") .. formatNumber(last_payday_total))
+                        imgui.Text(getIcon("COINS", "") .. u8("AZ-Coins: ") .. formatNumber(base_payday_az) .. " AZ" .. u8(bonus_text))
+                    imgui.EndChild()
 
 
 
 
-                    
-local function drawProjectionCard(title_label, icon_name, multiplier, az_multiplier)
-    local totalSalaryDeposit =
-        (last_w + last_d) * multiplier
 
-    local dividendTotal = last_dividend * az_multiplier
+local function drawProjectionCard(title_label, icon_name, mult, hours_mult)
+    mult = tonumber(mult) or 1
+    hours_mult = tonumber(hours_mult) or 1
 
-    local totalForPeriod =
-        totalSalaryDeposit + dividendTotal
+    -- Вирты
+    local totalSalaryDeposit = (last_w + last_d) * mult
+    local dividendTotal = last_dividend * hours_mult
+    local totalForPeriod = totalSalaryDeposit + dividendTotal
 
-    local mafiaAzTotal = last_mafia_az * az_multiplier
-    local containerAzTotal = last_container_az * az_multiplier
-    local paydayAzTotal = last_a * multiplier
+    -- AZ: базовый PayDay (16 + EXP + мафия) идет 2 раза в час
+    local rep_az = session_stats.last_payday_rep_az or 0
+    local mafia_az = session_stats.last_mafia_coin_az or 0
+    local regular_payday_az = last_a + rep_az + mafia_az
+    local totalRegularAz = regular_payday_az * mult
 
-    local totalAzForPeriod =
-        paydayAzTotal +
-        mafiaAzTotal +
-        containerAzTotal
+    -- Часовой бонус (монеты контейнера) 1 раз в час
+    local bonus_az = session_stats.last_container_coin_az or 0
+    local totalBonusAz = bonus_az * hours_mult
 
-    imgui.TextColored(
-        imgui.ImVec4(0.18, 0.80, 0.44, 1.00),
-        getIcon(icon_name, "") .. u8(title_label)
-    )
+    -- Итого AZ
+    local totalAzForPeriod = totalRegularAz + totalBonusAz
 
+    imgui.TextColored(imgui.ImVec4(0.18, 0.80, 0.44, 1.00), getIcon(icon_name, "") .. u8(title_label))
     imgui.BeginChild("##card_" .. title_label, imgui.ImVec2(0, 135), true)
-        imgui.Text(
-            getIcon("DOLLAR_SIGN", "") ..
-            u8("Зарплата: $") ..
-            formatNumber(last_w * multiplier)
-        )
-
-        imgui.Text(
-            getIcon("CREDIT_CARD", "") ..
-            u8("Депозит: $") ..
-            formatNumber(last_d * multiplier)
-        )
-
-        imgui.Text(
-            getIcon("MONEY_BILL_WAVE", "") ..
-            u8("Дивиденды: $") ..
-            formatNumber(dividendTotal)
-        )
-
-        imgui.Text(
-            getIcon("MONEY_BILL_WAVE", "") ..
-            u8("Общий доход: $") ..
-            formatNumber(totalForPeriod)
-        )
-
-        imgui.Text(
-            getIcon("COINS", "") ..
-            u8("AZ-Coins: ") ..
-            formatNumber(totalAzForPeriod) ..
-            " AZ"
-        )
+        imgui.Text(getIcon("DOLLAR_SIGN", "") .. u8("Зарплата: $") .. formatNumber(last_w * mult))
+        imgui.Text(getIcon("CREDIT_CARD", "") .. u8("Депозит: $") .. formatNumber(last_d * mult))
+        imgui.Text(getIcon("MONEY_BILL_WAVE", "") .. u8("Дивиденды: $") .. formatNumber(dividendTotal))
+        imgui.Text(getIcon("MONEY_BILL_WAVE", "") .. u8("Общий доход: $") .. formatNumber(totalForPeriod))
+        imgui.Text(getIcon("COINS", "") .. u8("AZ-Coins: ") .. formatNumber(totalAzForPeriod) .. " AZ")
     imgui.EndChild()
-
     imgui.Dummy(imgui.ImVec2(0, 5))
 end
 
-
-
-                    
-                    drawProjectionCard("За 1 час:", "CLOCK", 2, 1)
+drawProjectionCard("За 1 час:", "CLOCK", 2, 1)
 drawProjectionCard("За 24 часа:", "CALENDAR_DAYS", 48, 24)
 drawProjectionCard("За месяц:", "CALENDAR_DAYS", 1440, 720)
+
+
 
                     
                     imgui.EndPopup()
@@ -3248,6 +3221,146 @@ local total_earned =
         end
         imgui.PopStyleColor()
     end
+	    -- ========================================================================
+    -- ОКНО СРАВНЕНИЯ ДВУХ PAYDAY (ЛЕВО: ВЫБРАННЫЙ, ПРАВО: ТЕКУЩИЙ)
+    -- ========================================================================
+    if show_compare_window[0] then
+        local cmpW, cmpH = 560, 370
+        imgui.SetNextWindowPos(imgui.ImVec2(resX / 2, resY / 2), imgui.Cond.FirstUseEver, imgui.ImVec2(0.5, 0.5))
+        imgui.SetNextWindowSize(imgui.ImVec2(cmpW, cmpH), imgui.Cond.Always)
+        imgui.PushStyleColor(imgui.Col.WindowBg, imgui.ImVec4(0.09, 0.11, 0.15, 0.98))
+
+        if imgui.Begin("##PayDayCompareModal", show_compare_window, imgui.WindowFlags.NoTitleBar + imgui.WindowFlags.NoResize + imgui.WindowFlags.NoCollapse) then
+            -- Перетаскивание за окно
+            if imgui.IsWindowHovered(1) and imgui.IsMouseDragging(0) and not imgui.IsAnyItemActive() then
+                local delta = imgui.GetIO().MouseDelta
+                local pos = imgui.GetWindowPos()
+                imgui.SetWindowPos(imgui.ImVec2(pos.x + delta.x, pos.y + delta.y))
+            end
+
+            imgui.TextColored(imgui.ImVec4(0.95, 0.76, 0.18, 1.00), getIcon("SCALE_BALANCED", "<>") .. u8("Сравнение выплат PayDay (До / После изменений)"))
+            imgui.Separator()
+            imgui.Dummy(imgui.ImVec2(0, 3))
+
+            local snapshots = session_stats.payday_snapshots or {}
+            
+            -- Правая карточка: самый свежий PayDay
+            local current_pd = snapshots[1] or {
+                time_str = "Текущий",
+                wage = session_stats.last_payday_wage or 0,
+                deposit = session_stats.last_payday_dep or 0,
+                dividend = session_stats.last_payday_dividend or 0,
+                total_money = (session_stats.last_payday_wage or 0) + (session_stats.last_payday_dep or 0) + (session_stats.last_payday_dividend or 0),
+                az = (session_stats.last_payday_az or 0) + (session_stats.last_payday_rep_az or 0) + (session_stats.last_mafia_coin_az or 0) + (session_stats.last_container_coin_az or 0)
+            }
+
+            -- Левая карточка: выбранный из истории
+            local sel_idx = math.max(1, math.min(selected_compare_idx[0], #snapshots))
+            local past_pd = snapshots[sel_idx] or current_pd
+
+            local card_w = 262
+
+            -- Вспомогательная функция карточки PayDay
+            local function renderPdCard(title_text, pd_data, is_current)
+                local header_col = is_current and imgui.ImVec4(0.18, 0.80, 0.44, 1.00) or imgui.ImVec4(0.40, 0.70, 1.00, 1.00)
+                imgui.TextColored(header_col, u8(title_text))
+                imgui.BeginChild("##pd_card_" .. title_text, imgui.ImVec2(card_w, 155), true)
+                    imgui.Text(getIcon("CLOCK", "") .. u8("Время: ") .. tostring(pd_data.time_str))
+                    imgui.Separator()
+                    imgui.Text(getIcon("DOLLAR_SIGN", "") .. u8("Зарплата: $") .. formatNumber(pd_data.wage))
+                    imgui.Text(getIcon("CREDIT_CARD", "") .. u8("Депозит: $") .. formatNumber(pd_data.deposit))
+                    imgui.Text(getIcon("MONEY_BILL_WAVE", "") .. u8("Дивиденд: $") .. formatNumber(pd_data.dividend))
+                    imgui.Separator()
+                    imgui.TextColored(imgui.ImVec4(0.95, 0.76, 0.18, 1.00), getIcon("MONEY_BILL_WAVE", "") .. u8("Общий доход: $") .. formatNumber(pd_data.total_money))
+                    imgui.TextColored(imgui.ImVec4(0.95, 0.76, 0.18, 1.00), getIcon("COINS", "") .. u8("AZ-Coins: ") .. formatNumber(pd_data.az) .. " AZ")
+                imgui.EndChild()
+            end
+
+            -- Выпадающий список для левой карточки (выбор прошлого PayDay)
+            imgui.BeginGroup()
+                imgui.TextDisabled(u8("Выберите старый PayDay:"))
+                imgui.SetNextItemWidth(card_w)
+                if #snapshots > 0 then
+                    local combo_preview = string.format("#%d | %s ($%s)", sel_idx, snapshots[sel_idx].time_str, formatNumber(snapshots[sel_idx].total_money))
+                    if imgui.BeginCombo("##past_pd_combo", u8(combo_preview)) then
+                        for i, sn in ipairs(snapshots) do
+                            local label = string.format("#%d | %s ($%s)", i, sn.time_str, formatNumber(sn.total_money))
+                            local is_selected = (selected_compare_idx[0] == i)
+                            if imgui.Selectable(u8(label), is_selected) then
+                                selected_compare_idx[0] = i
+                            end
+                        end
+                        imgui.EndCombo()
+                    end
+                else
+                    imgui.TextDisabled(u8("История ещё собирается..."))
+                end
+                
+                imgui.Dummy(imgui.ImVec2(0, 2))
+                renderPdCard("Слева: Прошлый PayDay", past_pd, false)
+            imgui.EndGroup()
+
+            imgui.SameLine()
+
+            -- Правая группа (Текущий PayDay)
+            imgui.BeginGroup()
+                imgui.TextDisabled(u8("Текущий результат:"))
+                imgui.Dummy(imgui.ImVec2(0, 20)) -- выравнивание с комбо-боксом
+                renderPdCard("Справа: Нынешний PayDay", current_pd, true)
+            imgui.EndGroup()
+
+            imgui.Dummy(imgui.ImVec2(0, 4))
+            imgui.Separator()
+            imgui.Dummy(imgui.ImVec2(0, 2))
+
+            -- БЛОК РАСЧЁТА РАЗНИЦЫ (ДЕЛЬТА)
+            local diff_money = (current_pd.total_money or 0) - (past_pd.total_money or 0)
+            local diff_wage = (current_pd.wage or 0) - (past_pd.wage or 0)
+            local diff_az = (current_pd.az or 0) - (past_pd.az or 0)
+
+            local function formatDiff(val, unit)
+                local prefix = val > 0 and "+$" or (val < 0 and "-$" or "$")
+                if unit == "AZ" then
+                    prefix = val > 0 and "+" or ""
+                    return prefix .. formatNumber(val) .. " AZ"
+                end
+                return prefix .. formatNumber(math.abs(val))
+            end
+
+            local function getDiffColor(val)
+                if val > 0 then return imgui.ImVec4(0.18, 0.80, 0.44, 1.00) end
+                if val < 0 then return imgui.ImVec4(0.95, 0.26, 0.26, 1.00) end
+                return imgui.ImVec4(0.60, 0.65, 0.73, 1.00)
+            end
+
+            imgui.TextColored(imgui.ImVec4(0.95, 0.76, 0.18, 1.00), u8("Чистый прирост / Изменение:"))
+            
+            imgui.Text(u8("По зарплате: "))
+            imgui.SameLine()
+            imgui.TextColored(getDiffColor(diff_wage), u8(formatDiff(diff_wage, "$")))
+
+            imgui.SameLine(180)
+            imgui.Text(u8("Общий доход: "))
+            imgui.SameLine()
+            imgui.TextColored(getDiffColor(diff_money), u8(formatDiff(diff_money, "$")))
+
+            imgui.SameLine(360)
+            imgui.Text(u8("AZ-Coins: "))
+            imgui.SameLine()
+            imgui.TextColored(getDiffColor(diff_az), u8(formatDiff(diff_az, "AZ")))
+
+            imgui.Dummy(imgui.ImVec2(0, 4))
+            imgui.PushStyleColor(imgui.Col.Button, imgui.ImVec4(0.18, 0.20, 0.26, 0.8))
+            imgui.PushStyleColor(imgui.Col.ButtonHovered, imgui.ImVec4(0.24, 0.26, 0.33, 1.0))
+            if imgui.Button(u8("Закрыть сравнение"), imgui.ImVec2(-1, 26)) then
+                show_compare_window[0] = false
+            end
+            imgui.PopStyleColor(2)
+
+            imgui.End()
+        end
+        imgui.PopStyleColor()
+    end
 end)
 
 local function processTradeMoneyChange(new_money)
@@ -3279,7 +3392,7 @@ local function processTradeMoneyChange(new_money)
     if samp._tm_last_trade_expense == expense and samp._tm_last_trade_expense_time and (os.clock() - samp._tm_last_trade_expense_time < 3.0) then
         return
     end
-
+ 
     samp._tm_last_trade_expense = expense
     samp._tm_last_trade_expense_time = os.clock()
 
@@ -3396,24 +3509,38 @@ function samp.onServerMessage(color, text)
 
     -- 2. Монета Контейнера с Бизнес Центра (1 раз в час)
     -- Пример: Вы получили +2 AZ COINS на баланс аккаунта!
-    if cleanText:find("Монет", 1, true) 
-        and cleanText:find("Контейнера", 1, true) 
-        and cleanText:find("AZ", 1, true) then
-
-        local amountText = cleanText:match("Вы получили%s*%+[%w%.]*([%d%.,]+)%s*AZ")
+    -- Ловим монеты контейнеров / любой часовой бонус в ??:00
+    -- 2. Монета Контейнера с Бизнес Центра (1 раз в час)
+    -- Пример: Вы получили +2 AZ COINS на баланс аккаунта!
+-- Монета Контейнера с Бизнес-Центра
+    -- 2. Монета Контейнера с Бизнес Центра (1 раз в час)
+    if cleanText:find("Монет", 1, true) and cleanText:find("Контейнера", 1, true) and cleanText:find("AZ", 1, true) then
+        local amountText = cleanText:match("Вы получили%s*%+([%d%.,]+)%s*AZ")
                         or cleanText:match("%+([%d%.,]+)%s*AZ")
         local amount = parse_numeric_value(amountText)
 
         if amount > 0 and not isDuplicateReward("container", amount) then
+            got_container_this_hour = true
             session_stats.container_coin_az = (session_stats.container_coin_az or 0) + amount
             session_stats.az_accumulated = (session_stats.az_accumulated or 0) + amount
             session_stats.last_container_coin_az = amount
 
-            add_history_log("AZ-Coins", "Монета Контейнера с Бизнес Центра", "+" .. formatNumber(amount) .. " AZ", false)
+            -- Автоматически обновляем последний снимок PayDay, если он только что создался
+            session_stats.payday_snapshots = session_stats.payday_snapshots or {}
+            if session_stats.payday_snapshots[1] then
+                session_stats.payday_snapshots[1].container_az = amount
+                session_stats.payday_snapshots[1].az = (session_stats.payday_snapshots[1].base_az or session_stats.payday_snapshots[1].az or 0) + amount
+            end
+
+            add_history_log("AZ-Coins", "Монета Контейнера (Часовой бонус)", "+" .. formatNumber(amount) .. " AZ", false)
             save_stats_to_file()
-            -- sampAddChatMessage("{00FF00}[TM] Успешно учтено: +" .. amount .. " AZ (Контейнеры)", -1)
         end
     end
+
+
+
+
+
 
     -- 3. Дивидендный договор (1 раз в час)
     -- Пример: Вы получили +??30.000 за Дивидентный договор
@@ -3754,8 +3881,44 @@ end
         getPayday = true
         listPayday = {}
         paydayTimeout = os.time() + 5
+  
+        local current_min = tonumber(os.date("%M")) or 0
+
+        -- Если это ЧАСОВОЙ PayDay (в районе :00 минут, например от 55 до 05 минут)
+if current_min >= 55 or current_min <= 5 then
+    got_container_this_hour = false
+
+    lua_thread.create(function()
+        wait(4000)
+
+        if not got_container_this_hour then
+            session_stats.last_container_coin_az = 0
+
+            if session_stats.payday_snapshots
+                and session_stats.payday_snapshots[1] then
+
+                session_stats.payday_snapshots[1].container_az = 0
+                session_stats.payday_snapshots[1].az =
+                    session_stats.payday_snapshots[1].base_az or
+                    session_stats.payday_snapshots[1].az or 0
+            end
+
+            save_stats_to_file()
+        end
+
+        got_container_this_hour = false
+    end)
+end
+
+        -- В :30 минут ничего не трогаем, бонус спокойно живет дальше!
+  
+        -- Сбрасываем только полу-часовые баффы
+        session_stats.last_mafia_coin_az = 0
+        session_stats.last_payday_rep_az = 0
+
         local h_tag = cfg.config.paydayHeaderEmoji ~= "emoji_none" and ("{" .. cfg.config.paydayHeaderEmoji .. "}") or ""
         table.insert(listPayday, h_tag .. "PayDay | БАНКОВСКИЙ ЧЕК" .. h_tag)
+
     elseif getPayday then
         local cleanLine = cleanText
         local bank_tag = cfg.config.paydayBankEmoji ~= "emoji_none" and "{" .. cfg.config.paydayBankEmoji .. "}" or ""
@@ -3793,7 +3956,19 @@ end
             cleanLine = cleanLine:gsub(':CASH:', bank_tag)
             keep = true
         elseif cleanLine:find('В данный момент у вас') and cleanLine:find('респектов') then
+            local exp_val = cleanLine:match("%+(%d+)%s*EXP") or cleanLine:match("респектов%s*%((%+%d+)%s*EXP")
+            exp_val = tonumber(exp_val) or 0
+
+            if exp_val > 0 then
+                -- Считаем сколько респектов получено ТОЛЬКО для расчета прогноза!
+                session_stats.last_payday_rep_az = math.floor((exp_val / 2) * 3)
+            end
+
             keep = true
+        
+
+        
+
         elseif cleanLine:find('==========') or cleanLine:find('__________') then
             keep = true
         end
@@ -3807,10 +3982,44 @@ end
 
         if keep then
             table.insert(listPayday, formatNumbersInText(cleanLine))
-            if (cleanText:find('==========') or cleanText:find('__________')) and #listPayday > 2 then
+                       if (cleanText:find('==========') or cleanText:find('__________')) and #listPayday > 2 then
                 if payday[0] then sendTelegramMessage(table.concat(listPayday, '\n')) end
+
+                -- === СОХРАНЯЕМ СНИМОК PAYDAY ДЛЯ СРАВНЕНИЯ ===
+                session_stats.payday_snapshots = session_stats.payday_snapshots or {}
+                
+local rep_az = session_stats.last_payday_rep_az or 0
+local mafia_az = session_stats.last_mafia_coin_az or 0
+local payday_az = session_stats.last_payday_az or 0
+local container_az = session_stats.last_container_coin_az or 0
+
+local base_az = payday_az + rep_az + mafia_az
+local total_az = base_az + container_az
+
+                local total_money = (session_stats.last_payday_wage or 0) + (session_stats.last_payday_dep or 0) + (session_stats.last_payday_dividend or 0)
+
+                table.insert(session_stats.payday_snapshots, 1, {
+                    time_str = os.date("%H:%M (%d.%m)"),
+                    wage = session_stats.last_payday_wage or 0,
+                    deposit = session_stats.last_payday_dep or 0,
+                    dividend = session_stats.last_payday_dividend or 0,
+                    total_money = total_money,
+                    base_az = base_az,
+container_az = container_az,
+az = total_az
+
+                })
+
+                -- Храним последние 48 PayDay (ровно за одни полные сутки)
+                while #session_stats.payday_snapshots > 48 do
+                    table.remove(session_stats.payday_snapshots)
+                end
+                save_stats_to_file()
+                -- ============================================
+
                 getPayday = false 
             end
+
         end
     end
 end
