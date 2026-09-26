@@ -46,7 +46,7 @@ local stats_file_path = script_folder .. "\\ScriptTM_stats.json"
 local ITEMS_DB_URL = "https://raw.githubusercontent.com/dmashmakov2000-coder/item11/main/items.json"
 local LOGO_URL = "https://raw.githubusercontent.com/dmashmakov2000-coder/item11/main/logo1.png"
 
-local SCRIPT_VERSION = "0.4.3"
+local SCRIPT_VERSION = "0.4.4"
 local UPDATE_URL = "https://raw.githubusercontent.com/dmashmakov2000-coder/item11/main/Item.lua"
 local CFG_FILENAME = 'Script [TM].ini'
 
@@ -1975,12 +1975,14 @@ drawSidebarTab(7, "USERS", "Друзья") -- КНОПКА ДРУЗЕЙ В МЕНЮ
                 imgui.PopStyleColor(2)
 
 
-                
-                imgui.SetNextWindowSize(imgui.ImVec2(380, 510), imgui.Cond.Always)
+                -- Задаем достаточную высоту под все 4 блока и убираем скроллбар
+                imgui.SetNextWindowSize(imgui.ImVec2(385, 655), imgui.Cond.Always)
+                imgui.PushStyleVarFloat(imgui.StyleVar.ScrollbarSize, 0.0) -- Полностью убирает полосу прокрутки
                 if imgui.BeginPopup("ProjectionPopup") then
                     imgui.TextColored(imgui.ImVec4(0.95, 0.76, 0.18, 1.00), getIcon("CHART_LINE", "") .. u8("Прогноз прибыли (при непрерывной игре)"))
                     imgui.Separator()
                     imgui.Dummy(imgui.ImVec2(0, 3))
+
                     
 					
 					
@@ -2486,24 +2488,23 @@ local total_earned =
 				
 				
 				
-            elseif currentTab[0] == 7 then
+                       elseif currentTab[0] == 7 then
                 imgui.TextColored(imgui.ImVec4(0.95, 0.76, 0.18, 1.00), getIcon("USERS", "") .. u8("Статистика друзей и онлайн-сравнение"))
                 imgui.Separator()
                 imgui.Dummy(imgui.ImVec2(0, 3))
 
-                -- Верхняя панель: Облачный чекбокс и кнопка выгрузки
+                -- Верхняя панель: статус работы и кнопка ручной выгрузки
                 imgui.PushStyleColor(imgui.Col.ChildBg, imgui.ImVec4(0.06, 0.08, 0.11, 1.00))
                 imgui.BeginChild("##top_cloud_bar", imgui.ImVec2(-1, 38), true)
-                    imgui.SetCursorPosY(7)
-                    if imgui.Checkbox(u8("Делиться моей статистикой с друзьями в облаке"), friends_sync_enabled) then
-                        if friends_sync_enabled[0] then uploadMyStatsToCloud(true) end
-                    end
+                    imgui.SetCursorPosY(10)
+                    imgui.TextColored(imgui.ImVec4(0.18, 0.80, 0.44, 1.00), getIcon("CIRCLE_CHECK", "") .. u8("Синхронизация активна (автовыгрузка каждый PayDay в :00)"))
+                    
                     imgui.SameLine(sizeX - 370)
-                    imgui.PushStyleColor(imgui.Col.Button, imgui.ImVec4(0.95, 0.76, 0.18, 0.15))
-                    imgui.PushStyleColor(imgui.Col.ButtonHovered, imgui.ImVec4(0.95, 0.76, 0.18, 0.30))
-                    if imgui.Button(getIcon("CLOUD_ARROW_UP", "") .. u8("Выгрузить мою стат."), imgui.ImVec2(145, 24)) then
+                    imgui.PushStyleColor(imgui.Col.Button, imgui.ImVec4(0.95, 0.76, 0.18, 0.20))
+                    imgui.PushStyleColor(imgui.Col.ButtonHovered, imgui.ImVec4(0.95, 0.76, 0.18, 0.35))
+                    if imgui.Button(getIcon("CLOUD_ARROW_UP", "") .. u8("Выгрузить сейчас"), imgui.ImVec2(145, 24)) then
                         uploadMyStatsToCloud(true)
-                        show_arz_notify('success', 'Облако', 'Ваша статистика выгружена для друзей!', 2500)
+                        show_arz_notify('success', 'Облако', 'Ваша статистика отправлена в облако!', 2500)
                     end
                     imgui.PopStyleColor(2)
                 imgui.EndChild()
@@ -2511,18 +2512,20 @@ local total_earned =
 
                 imgui.Dummy(imgui.ImVec2(0, 4))
 
-                -- === ЛЕВАЯ КОЛОНКА: СПИСОК ДРУЗЕЙ ===
-                imgui.BeginChild("##friends_sidebar_col", imgui.ImVec2(175, sizeY - 145), true)
+                -- === ЛЕВАЯ КОЛОНКА: СПИСОК ДРУЗЕЙ И УДАЛЕНИЕ ===
+                imgui.BeginChild("##friends_sidebar_col", imgui.ImVec2(185, sizeY - 145), true)
                     imgui.TextColored(imgui.ImVec4(0.95, 0.76, 0.18, 1.00), u8("Список друзей:"))
                     imgui.Dummy(imgui.ImVec2(0, 4))
 
                     session_stats.friends_list = session_stats.friends_list or {}
                     local friends = session_stats.friends_list
+                    local friend_to_remove = nil
 
-                    -- Список добавленных друзей
                     imgui.BeginChild("##friends_buttons_scroll", imgui.ImVec2(-1, sizeY - 265), false)
                         for i, f_nick in ipairs(friends) do
                             local is_sel = (selected_friend_idx[0] == i)
+                            
+                            -- Кнопка выбора друга
                             if is_sel then
                                 imgui.PushStyleColor(imgui.Col.Button, imgui.ImVec4(0.18, 0.80, 0.44, 0.25))
                                 imgui.PushStyleColor(imgui.Col.ButtonHovered, imgui.ImVec4(0.18, 0.80, 0.44, 0.40))
@@ -2531,24 +2534,36 @@ local total_earned =
                                 imgui.PushStyleColor(imgui.Col.ButtonHovered, imgui.ImVec4(0.18, 0.22, 0.30, 0.80))
                             end
 
-                            local btn_p = imgui.GetCursorScreenPos()
-                            if imgui.Button(u8(f_nick) .. "##fr_btn_" .. i, imgui.ImVec2(155, 30)) then
+                            if imgui.Button(u8(f_nick) .. "##fr_btn_" .. i, imgui.ImVec2(130, 30)) then
                                 selected_friend_idx[0] = i
                                 fetchFriendStats(f_nick)
                             end
-
-                            -- Зеленый индикатор активности справа внутри кнопки
-                            local dl = imgui.GetWindowDrawList()
-                            local has_data = friends_data_cache[f_nick] ~= nil
-                            local dot_col = has_data and imgui.GetColorU32Vec4(imgui.ImVec4(0.18, 0.80, 0.44, 1.00)) or imgui.GetColorU32Vec4(imgui.ImVec4(0.45, 0.50, 0.60, 1.00))
-                            dl:AddCircleFilled(imgui.ImVec2(btn_p.x + 143, btn_p.y + 15), 3.5, dot_col)
-
-                            if is_sel then
-                                dl:AddRect(btn_p, imgui.ImVec2(btn_p.x + 155, btn_p.y + 30), imgui.GetColorU32Vec4(imgui.ImVec4(0.18, 0.80, 0.44, 0.80)), 6.0, 0, 1.2)
-                            end
-
                             imgui.PopStyleColor(2)
+
+                            -- Кнопка удаления друга (Красный крестик рядом)
+                            imgui.SameLine()
+                            imgui.PushStyleColor(imgui.Col.Button, imgui.ImVec4(0.95, 0.26, 0.26, 0.15))
+                            imgui.PushStyleColor(imgui.Col.ButtonHovered, imgui.ImVec4(0.95, 0.26, 0.26, 0.50))
+                            if imgui.Button("X##del_fr_" .. i, imgui.ImVec2(24, 30)) then
+                                friend_to_remove = i
+                            end
+                            if imgui.IsItemHovered() then
+                                imgui.BeginTooltip()
+                                imgui.Text(u8("Удалить из списка"))
+                                imgui.EndTooltip()
+                            end
+                            imgui.PopStyleColor(2)
+
                             imgui.Dummy(imgui.ImVec2(0, 2))
+                        end
+
+                        -- Обработка удаления
+                        if friend_to_remove then
+                            table.remove(session_stats.friends_list, friend_to_remove)
+                            if selected_friend_idx[0] > #session_stats.friends_list then
+                                selected_friend_idx[0] = math.max(1, #session_stats.friends_list)
+                            end
+                            save_stats_to_file()
                         end
 
                         if #friends == 0 then
@@ -2560,13 +2575,13 @@ local total_earned =
                     imgui.Separator()
                     imgui.Dummy(imgui.ImVec2(0, 2))
                     imgui.TextDisabled(u8("Ник друга:"))
-                    imgui.SetNextItemWidth(155)
+                    imgui.SetNextItemWidth(165)
                     imgui.InputText("##add_f_nick_input", new_friend_nick, ffi.sizeof(new_friend_nick))
                     imgui.Dummy(imgui.ImVec2(0, 3))
 
                     imgui.PushStyleColor(imgui.Col.Button, imgui.ImVec4(0.18, 0.80, 0.44, 0.25))
                     imgui.PushStyleColor(imgui.Col.ButtonHovered, imgui.ImVec4(0.18, 0.80, 0.44, 0.45))
-                    if imgui.Button(u8("+ Добавить друга"), imgui.ImVec2(155, 26)) then
+                    if imgui.Button(u8("+ Добавить"), imgui.ImVec2(165, 26)) then
                         local nick_to_add = ffi.string(new_friend_nick):gsub("%s+", "")
                         if nick_to_add ~= "" then
                             local exists = false
@@ -2588,7 +2603,7 @@ local total_earned =
                 imgui.SameLine()
 
                 -- === ПРАВАЯ КОЛОНКА: СТАТИСТИКА И СРАВНЕНИЕ ===
-                imgui.BeginChild("##friend_stats_view_col", imgui.ImVec2(sizeX - 405, sizeY - 145), true)
+                imgui.BeginChild("##friend_stats_view_col", imgui.ImVec2(sizeX - 415, sizeY - 145), true)
                     local current_friend_nick = friends[selected_friend_idx[0]]
 
                     if not current_friend_nick then
@@ -2597,14 +2612,9 @@ local total_earned =
                     else
                         local fr_data = friends_data_cache[current_friend_nick]
 
-                        -- Если данных еще нет, пробуем подтянуть
-                        if not fr_data and not is_syncing_cloud then
-                            fetchFriendStats(current_friend_nick)
-                        end
-
                         -- Заголовок с ником и кнопкой обновления
                         imgui.TextColored(imgui.ImVec4(0.18, 0.80, 0.44, 1.00), getIcon("USER", "") .. u8("Игрок: ") .. current_friend_nick)
-                        imgui.SameLine(sizeX - 515)
+                        imgui.SameLine(sizeX - 525)
                         imgui.PushStyleColor(imgui.Col.Button, imgui.ImVec4(0.18, 0.50, 0.80, 0.25))
                         imgui.PushStyleColor(imgui.Col.ButtonHovered, imgui.ImVec4(0.18, 0.50, 0.80, 0.45))
                         if imgui.Button(getIcon("ARROWS_ROTATE", "") .. u8("Обновить"), imgui.ImVec2(95, 24)) then
@@ -2612,113 +2622,121 @@ local total_earned =
                         end
                         imgui.PopStyleColor(2)
 
-                        local report_date = (fr_data and fr_data.date) and fr_data.date or os.date("%d.%m.%Y")
-                        local report_time = (fr_data and fr_data.updated_at) and fr_data.updated_at or os.date("%H:%M:%S")
-                        imgui.TextDisabled(u8("Дата отчёта: ") .. report_date .. u8(" | Обновлено: ") .. report_time)
-                        imgui.Dummy(imgui.ImVec2(0, 3))
+                        if is_syncing_cloud and not fr_data then
+                            imgui.Dummy(imgui.ImVec2(0, 20))
+                            imgui.TextColored(imgui.ImVec4(0.95, 0.76, 0.18, 1.00), u8("  Загрузка данных из облака..."))
+                        elseif not fr_data then
+                            imgui.Dummy(imgui.ImVec2(0, 20))
+                            imgui.TextColored(imgui.ImVec4(0.95, 0.26, 0.26, 1.00), u8("  У игрока нет выгруженной статистики за сегодня."))
+                            imgui.TextDisabled(u8("  Попросите друга нажать кнопку 'Выгрузить сейчас'."))
+                        else
+                            local report_date = fr_data.date or os.date("%d.%m.%Y")
+                            local report_time = fr_data.updated_at or os.date("%H:%M:%S")
+                            imgui.TextDisabled(u8("Дата отчёта: ") .. report_date .. u8(" | Обновлено: ") .. report_time)
+                            imgui.Dummy(imgui.ImVec2(0, 3))
 
-                        -- 1. КАРТОЧКА ЧИСТОГО БАЛАНСА ДРУГА (ТОЧНО КАК ВАША)
-                        imgui.PushStyleColor(imgui.Col.ChildBg, imgui.ImVec4(0.08, 0.10, 0.15, 1.00))
-                        imgui.BeginChild("##fr_balance_card", imgui.ImVec2(-1, 215), true)
-                            imgui.TextColored(imgui.ImVec4(0.18, 0.80, 0.44, 1.00), getIcon("MONEY_BILL_WAVE", "") .. u8("Чистый баланс друга за сегодня:"))
-                            imgui.Dummy(imgui.ImVec2(0, 2))
-
-                            local fr_wage = fr_data and tonumber(fr_data.wage) or 0
-                            local fr_dep = fr_data and tonumber(fr_data.deposit) or 0
-                            local fr_div = fr_data and tonumber(fr_data.dividend) or 0
-                            local fr_biz = fr_data and tonumber(fr_data.biz) or 0
-                            local fr_btc = fr_data and tonumber(fr_data.btc) or 0
-                            local fr_trade = fr_data and tonumber(fr_data.trade) or 0
-                            local fr_exp = fr_data and tonumber(fr_data.expenses) or 0
-                            local fr_net = fr_data and tonumber(fr_data.net_total) or (fr_wage + fr_dep + fr_div + fr_biz + fr_btc + fr_trade - fr_exp)
-                            local fr_az = fr_data and tonumber(fr_data.az) or 0
-
-                            local function drawFrRow(icon, label, val_text, val_col)
-                                imgui.TextColored(imgui.ImVec4(0.88, 0.89, 0.92, 1.00), getIcon(icon, "") .. u8(label))
-                                imgui.SameLine(180)
-                                imgui.TextColored(val_col or imgui.ImVec4(0.25, 0.85, 0.48, 1.00), val_text)
-                            end
-
-                            drawFrRow("DOLLAR_SIGN", "Зарплата (общая):", "$" .. formatNumber(fr_wage))
-                            drawFrRow("CREDIT_CARD", "Прирост по депозиту:", "$" .. formatNumber(fr_dep))
-                            drawFrRow("MONEY_BILL_WAVE", "Дивидендный договор:", "$" .. formatNumber(fr_div))
-                            drawFrRow("BRIEFCASE", "Прибыль с бизнеса:", "$" .. formatNumber(fr_biz))
-                            drawFrRow("COINS", "Продажа BTC:", "$" .. formatNumber(fr_btc))
-                            drawFrRow("CART_SHOPPING", "Продажа товаров:", "$" .. formatNumber(fr_trade))
-                            drawFrRow("TRASH", "Траты за сегодня:", "-$" .. formatNumber(fr_exp), imgui.ImVec4(0.95, 0.26, 0.26, 1.00))
-                            
-                            imgui.Separator()
-                            drawFrRow("MONEY_BILL_WAVE", "Итого чистый баланс:", "$" .. formatNumber(fr_net), imgui.ImVec4(0.98, 0.78, 0.20, 1.00))
-                            drawFrRow("COINS", "Заработано AZ-Coins:", formatNumber(fr_az) .. " AZ", imgui.ImVec4(0.98, 0.78, 0.20, 1.00))
-                        imgui.EndChild()
-                        imgui.PopStyleColor()
-
-                        imgui.Dummy(imgui.ImVec2(0, 4))
-
-                        -- 2. БЛОК СРАВНЕНИЯ (ВЫ ПРОТИВ ДРУГА)
-                        local my_net = getCurrentIncome()
-                        local diff_money = my_net - fr_net
-                        local my_az = session_stats.az_accumulated or 0
-                        local diff_az = my_az - fr_az
-                        local is_i_win = diff_money >= 0
-
-                        local function formatCompactM(val)
-                            local abs_val = math.abs(val)
-                            if abs_val >= 1000000000 then
-                                return string.format("%.2fB", abs_val / 1000000000)
-                            elseif abs_val >= 1000000 then
-                                return string.format("%.0fM", abs_val / 1000000)
-                            else
-                                return formatNumber(abs_val)
-                            end
-                        end
-
-                        if is_i_win then
-                            -- === СЦЕНАРИЙ 1: ВЫ ЛИДИРУЕТЕ (ЗЕЛЕНЫЙ ФОН) ===
-                            imgui.PushStyleColor(imgui.Col.ChildBg, imgui.ImVec4(0.18, 0.80, 0.44, 0.08))
-                            imgui.BeginChild("##comp_win_box", imgui.ImVec2(-1, 95), true)
-                                imgui.TextColored(imgui.ImVec4(0.95, 0.76, 0.18, 1.00), getIcon("CROWN", "??") .. u8("Вы лидируете в сегодняшнем фарме!"))
-                                imgui.TextColored(imgui.ImVec4(0.64, 0.89, 0.84, 1.00), u8("Ваш доход ($" .. formatCompactM(my_net) .. ") выше дохода " .. current_friend_nick .. " ($" .. formatCompactM(fr_net) .. ")"))
-                                imgui.Separator()
+                            -- Карточка чистого баланса
+                            imgui.PushStyleColor(imgui.Col.ChildBg, imgui.ImVec4(0.08, 0.10, 0.15, 1.00))
+                            imgui.BeginChild("##fr_balance_card", imgui.ImVec2(-1, 215), true)
+                                imgui.TextColored(imgui.ImVec4(0.18, 0.80, 0.44, 1.00), getIcon("MONEY_BILL_WAVE", "") .. u8("Чистый баланс друга за сегодня:"))
                                 imgui.Dummy(imgui.ImVec2(0, 2))
 
-                                imgui.TextDisabled(u8("Разница по виртам: "))
-                                imgui.SameLine()
-                                imgui.TextColored(imgui.ImVec4(0.18, 0.80, 0.44, 1.00), "+$" .. formatNumber(diff_money))
+                                local fr_wage = tonumber(fr_data.wage) or 0
+                                local fr_dep = tonumber(fr_data.deposit) or 0
+                                local fr_div = tonumber(fr_data.dividend) or 0
+                                local fr_biz = tonumber(fr_data.biz) or 0
+                                local fr_btc = tonumber(fr_data.btc) or 0
+                                local fr_trade = tonumber(fr_data.trade) or 0
+                                local fr_exp = tonumber(fr_data.expenses) or 0
+                                local fr_net = tonumber(fr_data.net_total) or (fr_wage + fr_dep + fr_div + fr_biz + fr_btc + fr_trade - fr_exp)
+                                local fr_az = tonumber(fr_data.az) or 0
 
-                                imgui.SameLine(180)
-                                imgui.TextDisabled(u8("Разница по AZ: "))
-                                imgui.SameLine()
-                                local az_pref = diff_az >= 0 and "+" or ""
-                                local az_c = diff_az >= 0 and imgui.ImVec4(0.18, 0.80, 0.44, 1.00) or imgui.ImVec4(0.95, 0.26, 0.26, 1.00)
-                                imgui.TextColored(az_c, az_pref .. formatNumber(diff_az) .. " AZ")
+                                local function drawFrRow(icon, label, val_text, val_col)
+                                    imgui.TextColored(imgui.ImVec4(0.88, 0.89, 0.92, 1.00), getIcon(icon, "") .. u8(label))
+                                    imgui.SameLine(180)
+                                    imgui.TextColored(val_col or imgui.ImVec4(0.25, 0.85, 0.48, 1.00), val_text)
+                                end
+
+                                drawFrRow("DOLLAR_SIGN", "Зарплата (общая):", "$" .. formatNumber(fr_wage))
+                                drawFrRow("CREDIT_CARD", "Прирост по депозиту:", "$" .. formatNumber(fr_dep))
+                                drawFrRow("MONEY_BILL_WAVE", "Дивидендный договор:", "$" .. formatNumber(fr_div))
+                                drawFrRow("BRIEFCASE", "Прибыль с бизнеса:", "$" .. formatNumber(fr_biz))
+                                drawFrRow("COINS", "Продажа BTC:", "$" .. formatNumber(fr_btc))
+                                drawFrRow("CART_SHOPPING", "Продажа товаров:", "$" .. formatNumber(fr_trade))
+                                drawFrRow("TRASH", "Траты за сегодня:", "-$" .. formatNumber(fr_exp), imgui.ImVec4(0.95, 0.26, 0.26, 1.00))
+                                
+                                imgui.Separator()
+                                drawFrRow("MONEY_BILL_WAVE", "Итого чистый баланс:", "$" .. formatNumber(fr_net), imgui.ImVec4(0.98, 0.78, 0.20, 1.00))
+                                drawFrRow("COINS", "Заработано AZ-Coins:", formatNumber(fr_az) .. " AZ", imgui.ImVec4(0.98, 0.78, 0.20, 1.00))
                             imgui.EndChild()
                             imgui.PopStyleColor()
-                        else
-                            -- === СЦЕНАРИЙ 2: ДРУГ ОПЕРЕЖАЕТ (КРАСНЫЙ ФОН) ===
-                            imgui.PushStyleColor(imgui.Col.ChildBg, imgui.ImVec4(0.95, 0.26, 0.26, 0.08))
-                            imgui.BeginChild("##comp_lose_box", imgui.ImVec2(-1, 95), true)
-                                imgui.TextColored(imgui.ImVec4(0.95, 0.35, 0.35, 1.00), getIcon("ARROW_TREND_DOWN", "??") .. u8(current_friend_nick .. " опережает вас по прибыли!"))
-                                imgui.TextColored(imgui.ImVec4(0.94, 0.58, 0.54, 1.00), u8("Доход друга ($" .. formatCompactM(fr_net) .. ") превышает ваш доход ($" .. formatCompactM(my_net) .. ")"))
-                                imgui.Separator()
-                                imgui.Dummy(imgui.ImVec2(0, 2))
 
-                                imgui.TextDisabled(u8("Вам не хватает до друга: "))
-                                imgui.SameLine()
-                                imgui.TextColored(imgui.ImVec4(0.95, 0.26, 0.26, 1.00), "-$" .. formatNumber(math.abs(diff_money)))
+                            imgui.Dummy(imgui.ImVec2(0, 4))
 
-                                imgui.SameLine(180)
-                                imgui.TextDisabled(u8("Отставание по AZ: "))
-                                imgui.SameLine()
-                                local az_pref = diff_az >= 0 and "+" or ""
-                                local az_c = diff_az >= 0 and imgui.ImVec4(0.18, 0.80, 0.44, 1.00) or imgui.ImVec4(0.95, 0.26, 0.26, 1.00)
-                                imgui.TextColored(az_c, az_pref .. formatNumber(diff_az) .. " AZ")
+                            -- Блок сравнения
+                            local my_net = getCurrentIncome()
+                            local diff_money = my_net - fr_net
+                            local my_az = session_stats.az_accumulated or 0
+                            local diff_az = my_az - fr_az
+                            local is_i_win = diff_money >= 0
+
+                            local function formatCompactM(val)
+                                local abs_val = math.abs(val)
+                                if abs_val >= 1000000000 then
+                                    return string.format("%.2fB", abs_val / 1000000000)
+                                elseif abs_val >= 1000000 then
+                                    return string.format("%.0fM", abs_val / 1000000)
+                                else
+                                    return formatNumber(abs_val)
+                                end
+                            end
+
+                            if is_i_win then
+                                imgui.PushStyleColor(imgui.Col.ChildBg, imgui.ImVec4(0.18, 0.80, 0.44, 0.08))
+                                imgui.BeginChild("##comp_win_box", imgui.ImVec2(-1, 95), true)
+                                    imgui.TextColored(imgui.ImVec4(0.95, 0.76, 0.18, 1.00), getIcon("CROWN", "") .. u8("Вы лидируете в сегодняшнем фарме!"))
+                                    imgui.TextColored(imgui.ImVec4(0.64, 0.89, 0.84, 1.00), u8("Ваш доход ($" .. formatCompactM(my_net) .. ") выше дохода " .. current_friend_nick .. " ($" .. formatCompactM(fr_net) .. ")"))
+                                    imgui.Separator()
+                                    imgui.Dummy(imgui.ImVec2(0, 2))
+
+                                    imgui.TextDisabled(u8("Разница по виртам: "))
+                                    imgui.SameLine()
+                                    imgui.TextColored(imgui.ImVec4(0.18, 0.80, 0.44, 1.00), "+$" .. formatNumber(diff_money))
+
+                                    imgui.SameLine(180)
+                                    imgui.TextDisabled(u8("Разница по AZ: "))
+                                    imgui.SameLine()
+                                    local az_pref = diff_az >= 0 and "+" or ""
+                                    local az_c = diff_az >= 0 and imgui.ImVec4(0.18, 0.80, 0.44, 1.00) or imgui.ImVec4(0.95, 0.26, 0.26, 1.00)
+                                    imgui.TextColored(az_c, az_pref .. formatNumber(diff_az) .. " AZ")
+                                imgui.EndChild()
+                                imgui.PopStyleColor()
+                            else
+                                imgui.PushStyleColor(imgui.Col.ChildBg, imgui.ImVec4(0.95, 0.26, 0.26, 0.08))
+                                imgui.BeginChild("##comp_lose_box", imgui.ImVec2(-1, 95), true)
+                                    imgui.TextColored(imgui.ImVec4(0.95, 0.35, 0.35, 1.00), getIcon("ARROW_TREND_DOWN", "") .. u8(current_friend_nick .. " опережает вас по прибыли!"))
+                                    imgui.TextColored(imgui.ImVec4(0.94, 0.58, 0.54, 1.00), u8("Доход друга ($" .. formatCompactM(fr_net) .. ") превышает ваш доход ($" .. formatCompactM(my_net) .. ")"))
+                                    imgui.Separator()
+                                    imgui.Dummy(imgui.ImVec2(0, 2))
+
+                                    imgui.TextDisabled(u8("Вам не хватает до друга: "))
+                                    imgui.SameLine()
+                                    imgui.TextColored(imgui.ImVec4(0.95, 0.26, 0.26, 1.00), "-$" .. formatNumber(math.abs(diff_money)))
+
+                                    imgui.SameLine(180)
+                                    imgui.TextDisabled(u8("Отставание по AZ: "))
+                                    imgui.SameLine()
+                                    local az_pref = diff_az >= 0 and "+" or ""
+                                    local az_c = diff_az >= 0 and imgui.ImVec4(0.18, 0.80, 0.44, 1.00) or imgui.ImVec4(0.95, 0.26, 0.26, 1.00)
+                                    imgui.TextColored(az_c, az_pref .. formatNumber(diff_az) .. " AZ")
+                                imgui.EndChild()
+                                imgui.PopStyleColor()
+                            end
                         end
                     end
                 imgui.EndChild()
-            
             end
-            imgui.EndChild()
+                  
 
         imgui.End()
     end
@@ -3733,6 +3751,9 @@ end
 
 -- === ВЫГРУЗКА СВОЕЙ СТАТИСТИКИ В ОБЛАКО ===
 -- === ВЫГРУЗКА И ПОЛУЧЕНИЕ СТАТИСТИКИ ИЗ ОБЛАКА ===
+-- БАЗОВЫЙ ОБЛАЧНЫЙ СЕРВЕР (REST API / MySQL-Bridge)
+local CLOUD_BASE_URL = "https://kvdb.io/8xQZfBq3GjVwY8k9mR2p/"
+
 function getMyNickName()
     if sampIsLocalPlayerSpawned() then
         local my_id = select(2, sampGetPlayerIdByCharHandle(PLAYER_PED))
@@ -3742,11 +3763,10 @@ function getMyNickName()
 end
 
 function uploadMyStatsToCloud(force)
-    if not friends_sync_enabled[0] then return end
-    if not force and os.time() - last_cloud_upload < 120 then return end
-    
     local my_nick = getMyNickName()
     if not my_nick or my_nick == "Player" then return end
+    
+    if not force and os.time() - last_cloud_upload < 60 then return end
     last_cloud_upload = os.time()
 
     local payload = {
@@ -3765,16 +3785,16 @@ function uploadMyStatsToCloud(force)
         az = session_stats.az_accumulated or 0
     }
 
-    -- Сохраняем в локальный кэш
     friends_data_cache[my_nick] = payload
 
     if requests_ok then
         lua_thread.create(function()
             local requests = require('requests')
-            local clean_url = string.format("https://kvdb.io/4P2hXk1c7s9A2b3c4d5e/%s", my_nick:gsub("%s+", "_"))
+            local clean_url = CLOUD_BASE_URL .. my_nick:gsub("%s+", "_")
             pcall(requests.put, clean_url, {
                 data = json.encode(payload),
-                headers = { ["Content-Type"] = "application/json" }
+                headers = { ["Content-Type"] = "application/json" },
+                timeout = 2.5
             })
         end)
     end
@@ -3783,7 +3803,7 @@ end
 function fetchFriendStats(friend_nick, callback)
     if not friend_nick or friend_nick == "" then return end
     
-    -- Если смотрим себя — моментально отдаем свои текущие данные
+    -- Если смотрим свой профиль — моментально показываем свои данные
     if friend_nick == getMyNickName() then
         friends_data_cache[friend_nick] = {
             nick = friend_nick,
@@ -3804,23 +3824,29 @@ function fetchFriendStats(friend_nick, callback)
         return
     end
 
-    if not requests_ok then return end
+    if not requests_ok then 
+        if callback then callback(false, nil) end
+        return 
+    end
+    
     is_syncing_cloud = true
 
     lua_thread.create(function()
         local requests = require('requests')
-        local clean_url = string.format("https://kvdb.io/4P2hXk1c7s9A2b3c4d5e/%s", friend_nick:gsub("%s+", "_"))
-        local ok, resp = pcall(requests.get, clean_url)
+        local clean_url = CLOUD_BASE_URL .. friend_nick:gsub("%s+", "_")
+        local ok, resp = pcall(requests.get, clean_url, { timeout = 2.5 })
         is_syncing_cloud = false
 
-        if ok and resp.status_code == 200 and resp.text and resp.text ~= "" and resp.text ~= "null" then
+        if ok and resp and resp.status_code == 200 and resp.text and resp.text ~= "" and resp.text ~= "null" then
             local dec_ok, data = pcall(json.decode, resp.text)
-            if dec_ok and type(data) == "table" then
+            if dec_ok and type(data) == "table" and data.nick then
                 friends_data_cache[friend_nick] = data
                 if callback then callback(true, data) end
                 return
             end
         end
+        
+        -- Если данных нет или произошла ошибка
         if callback then callback(false, nil) end
     end)
 end
@@ -3839,11 +3865,10 @@ function samp.onServerMessage(color, text)
 
     -- 1. Монета Новой Мафии (Выдается каждые 30 минут)
     -- Пример: Вы получили +8 AZ за Монету Новой Мафии
-    if cleanText:find("Монету Новой Мафии", 1, true)
-        and cleanText:find("AZ", 1, true) then
-
-        local amountText = cleanText:match("Вы получили%s*%+[%w%.]*([%d%.,]+)%s*AZ")
-                        or cleanText:match("%+([%d%.,]+)%s*AZ")
+    -- 1. Монета Новой Мафии (Исправлен баг с двузначными числами)
+    if cleanText:find("Монету Новой Мафии", 1, true) and cleanText:find("AZ", 1, true) then
+        local amountText = cleanText:match("Вы получили%s*%+([%d%.,%s]+)%s*AZ")
+                        or cleanText:match("%+([%d%.,%s]+)%s*AZ")
         local amount = parse_numeric_value(amountText)
 
         if amount > 0 and not isDuplicateReward("mafia", amount) then
@@ -3853,9 +3878,9 @@ function samp.onServerMessage(color, text)
 
             add_history_log("AZ-Coins", "Монета Новой Мафии", "+" .. formatNumber(amount) .. " AZ", false)
             save_stats_to_file()
-            -- sampAddChatMessage("{00FF00}[TM] Успешно учтено: +" .. amount .. " AZ (Мафия)", -1)
         end
     end
+
 
     -- 2. Монета Контейнера с Бизнес Центра (1 раз в час)
     -- Пример: Вы получили +2 AZ COINS на баланс аккаунта!
@@ -4235,30 +4260,30 @@ end
         local current_min = tonumber(os.date("%M")) or 0
 
         -- Если это ЧАСОВОЙ PayDay (в районе :00 минут, например от 55 до 05 минут)
-if current_min >= 55 or current_min <= 5 then
-    got_container_this_hour = false
+        -- Если это ЧАСОВОЙ PayDay (в районе :00 минут)
+        if current_min >= 55 or current_min <= 5 then
+            got_container_this_hour = false
 
-    lua_thread.create(function()
-        wait(4000)
+            -- АВТОВЫГРУЗКА В ОБЛАКО КАЖДЫЙ ЧАСОВОЙ PAYDAY
+            lua_thread.create(function()
+                wait(3000) -- ждем 3 секунды, чтобы все начисления за пейдей записались в баланс
+                uploadMyStatsToCloud(true)
+            end)
 
-        if not got_container_this_hour then
-            session_stats.last_container_coin_az = 0
-
-            if session_stats.payday_snapshots
-                and session_stats.payday_snapshots[1] then
-
-                session_stats.payday_snapshots[1].container_az = 0
-                session_stats.payday_snapshots[1].az =
-                    session_stats.payday_snapshots[1].base_az or
-                    session_stats.payday_snapshots[1].az or 0
-            end
-
-            save_stats_to_file()
+            lua_thread.create(function()
+                wait(4000)
+                if not got_container_this_hour then
+                    session_stats.last_container_coin_az = 0
+                    if session_stats.payday_snapshots and session_stats.payday_snapshots[1] then
+                        session_stats.payday_snapshots[1].container_az = 0
+                        session_stats.payday_snapshots[1].az = session_stats.payday_snapshots[1].base_az or session_stats.payday_snapshots[1].az or 0
+                    end
+                    save_stats_to_file()
+                end
+                got_container_this_hour = false
+            end)
         end
 
-        got_container_this_hour = false
-    end)
-end
 
         -- В :30 минут ничего не трогаем, бонус спокойно живет дальше!
   
