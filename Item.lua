@@ -46,7 +46,7 @@ local stats_file_path = script_folder .. "\\ScriptTM_stats.json"
 local ITEMS_DB_URL = "https://raw.githubusercontent.com/dmashmakov2000-coder/item11/main/items.json"
 local LOGO_URL = "https://raw.githubusercontent.com/dmashmakov2000-coder/item11/main/logo1.png"
 
-local SCRIPT_VERSION = "0.4.8"
+local SCRIPT_VERSION = "0.4.8.1"
 local UPDATE_URL = "https://raw.githubusercontent.com/dmashmakov2000-coder/item11/main/Item.lua"
 local CFG_FILENAME = 'Script [TM].ini'
 
@@ -3888,7 +3888,7 @@ end
 -- === ТАБЛИЦА ПРЯМЫХ ID (Чтобы всё работало моментально) ===
 local KNOWN_FRIEND_BINS = {
     ["Dima_Shmakov"] = "6ab7ccfdac6210605af7f0e3",
-    ["Luke_Johnson"] = "6ab7cfafac6210605af7f977"
+    ["Luke_Johnson"] = "6ab7e021ffd5d1605331cb13"
 }
 
 function fetchFriendStats(friend_nick, callback)
@@ -4031,20 +4031,39 @@ function samp.onServerMessage(color, text)
 
     -- 3. Дивидендный договор (1 раз в час)
     -- Пример: Вы получили +??30.000 за Дивидентный договор
-    if cleanText:find("Дивидентный договор", 1, true) or cleanText:find("Дивидендный договор", 1, true) then
-        local amountText = cleanText:match("Вы получили%s*%+[%w%.]*([%d%.,]+)%s*за")
-                        or cleanText:match("%+([%d%.,]+)%s*за")
+-- 3. Дивидендный договор
+do
+    local lower = cleanText:lower()
+
+    if lower:find("дивидентный договор", 1, true)
+    or lower:find("дивидендный договор", 1, true) then
+
+        -- Берём число после знака +, включая разделители тысяч.
+        local amountText =
+            cleanText:match("%+%s*[$]?%s*([%d][%d%.,%s]*)")
+            or cleanText:match("([%d][%d%.,%s]*)%s*за%s*[Дд]ивид")
+
         local amount = parse_numeric_value(amountText)
 
         if amount > 0 and not isDuplicateReward("dividend", amount) then
-            session_stats.dividend_income = (session_stats.dividend_income or 0) + amount
+            session_stats.dividend_income =
+                (tonumber(session_stats.dividend_income) or 0) + amount
+
             session_stats.last_payday_dividend = amount
 
-            add_history_log("Дивиденды", "Дивидендный договор", "+$" .. formatNumber(amount), false)
+            add_history_log(
+                "Дивиденды",
+                "Дивидендный договор",
+                "+$" .. formatNumber(amount),
+                false
+            )
+
             save_stats_to_file()
-            -- sampAddChatMessage("{00FF00}[TM] Успешно учтено: +$" .. formatNumber(amount) .. " (Дивиденды)", -1)
+            print("[TM] Учтён дивидендный договор: +" .. formatNumber(amount))
         end
     end
+end
+
 
 	    -- === [МАЙНИНГ] ПЕРЕХВАТ ОПЛАТЫ ЭЛЕКТРОЭНЕРГИИ ===
     -- Пример: [Информация] Вы успешно пополнили счёт дома за электроэнергию на 28.640.
@@ -4053,26 +4072,26 @@ function samp.onServerMessage(color, text)
     -- Пример 2 (VC): [Информация] Вы успешно пополнили счёт дома за электроэнергию на ??57.280.
     -- === [МАЙНИНГ] ПЕРЕХВАТ ОПЛАТЫ ЭЛЕКТРОЭНЕРГИИ (БЕЗ УМНОЖЕНИЯ) ===
     -- Пример: [Информация] Вы успешно пополнили счёт дома за электроэнергию на $ 300.000.
-    if cleanText:find("Вы успешно пополнили") and cleanText:find("электроэнергию") then
-        local sum_str = cleanText:match("электроэнергию на%s*[^%d]*(%d[%d%.,]*)")
-                     or cleanText:match("на%s*[^%d]*(%d[%d%.,]*)")
-                     
-        if sum_str then
-            local val = parse_numeric_value(sum_str)
-            if val > 0 then
-                -- Записываем ровно ту сумму, которая в чате (без x136)
-                session_stats.mining_electricity = (session_stats.mining_electricity or 0) + val
-                session_stats.mining_expenses = (session_stats.mining_expenses or 0) + val
-                session_stats.expenses_accumulated = (session_stats.expenses_accumulated or 0) + val
-                
-                -- Запись в Историю (вкладка 6)
-                add_history_log("Майнинг", "Оплата электроэнергии дома", "-$" .. formatNumber(val), true)
-                save_stats_to_file()
-                
-                --sampAddChatMessage("{00FF00}[Script TM] Успешно учтена оплата электроэнергии: {FFFFFF}$" .. formatNumber(val), -1)
-            end
+    -- 3. Дивидендный договор (1 раз в час)
+    -- Пример: Вы получили +??30.000 за Дивидентный договор (выдается каждый часовой PayDay)
+    if cleanText:find("Дивидентный договор") or cleanText:find("Дивидендный договор") then
+        -- Вырезаем строго число (с точками или запятыми) перед словом "за"
+        local amountText = cleanText:match("([%d][%d%.,%s]*)%s*за%s*Дивид")
+                        or cleanText:match("%+%s*.-([%d][%d%.,]+)%s*за")
+                        or cleanText:match("([%d][%d%.,]+)")
+
+        local amount = parse_numeric_value(amountText)
+
+        if amount and amount > 0 and not isDuplicateReward("dividend", amount) then
+            session_stats.dividend_income = (session_stats.dividend_income or 0) + amount
+            session_stats.last_payday_dividend = amount
+
+            add_history_log("Дивиденды", "Дивидендный договор", "+$" .. formatNumber(amount), false)
+            save_stats_to_file()
+            sampAddChatMessage("{00FF00}[TM] Успешно учтено: +$" .. formatNumber(amount) .. " (Дивидендный договор)", -1)
         end
     end
+
 
     -- === [МАЙНИНГ] ПЕРЕХВАТ ПОКУПКИ ОХЛАЖДАЮЩЕЙ ЖИДКОСТИ (БЕЗ УМНОЖЕНИЯ) ===
     if cleanText:find("Вы успешно купили") and cleanText:find("Охлаждающая жидкость для видеокарты") then
