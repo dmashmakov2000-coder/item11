@@ -1,8 +1,3 @@
---[[
-    Script [TM] - Ежедневный Финансовый Журнал и Трекер
-    Разработчик: Dima_Shmakov
-]]
-
 script_properties('work-in-pause')
 
 local ffi = require('ffi')
@@ -46,7 +41,7 @@ local stats_file_path = script_folder .. "\\ScriptTM_stats.json"
 local ITEMS_DB_URL = "https://raw.githubusercontent.com/dmashmakov2000-coder/item11/main/items.json"
 local LOGO_URL = "https://raw.githubusercontent.com/dmashmakov2000-coder/item11/main/logo1.png"
 
-local SCRIPT_VERSION = "0.4.8.1"
+local SCRIPT_VERSION = "0.4.8.2"
 local UPDATE_URL = "https://raw.githubusercontent.com/dmashmakov2000-coder/item11/main/Item.lua"
 local CFG_FILENAME = 'Script [TM].ini'
 
@@ -55,13 +50,8 @@ local DEFAULT_API = "https://api.telegram.org"
 local wasOpenedByCommand = false
 
 local UPDATE_INFO = [[
-Слепой дракон, без крыльев и чешуи.
-Он ищет в полумраке путь к укрытию
-В тесную, влажную пещеру.
-Войдя туда пылким и твердым исполином,
-Оставляет свой дар, выходит мокрым и уставшим.  
-
-Что это?
+Удалил все что мешало 
+и нагружало скрипт 
 
 ]]
 
@@ -1123,6 +1113,7 @@ end
 
 local default_config = {
     config = {
+	 scriptEnabled = false,
         chat = '',
         token = '',
         useAntiBlock = true,
@@ -1420,20 +1411,28 @@ function main()
     sampAddChatMessage('Script [TM] {ffffff}Разработан и написан Dima_Shmakov', 0x3083ff)
     sampAddChatMessage('Script [TM] {ffffff}Версия скрипта ' .. SCRIPT_VERSION, 0x3083ff)
     
-    sampRegisterChatCommand('tm', function() 
-        wasOpenedByCommand = true
-        if update_available then
-            show_update_popup[0] = true
-            window[0] = false 
+    sampRegisterChatCommand('tm', function(param) 
+        param = tostring(param):lower():gsub("%s+", "")
+        
+        if param == "on" then
+            cfg.config.scriptEnabled = true
+            saveConfig()
+            sampAddChatMessage("{00FF00}[TM] Учёт финансов и логирование ВКЛЮЧЕНЫ!", -1)
+        elseif param == "off" then
+            cfg.config.scriptEnabled = false
+            saveConfig()
+            sampAddChatMessage("{FF5555}[TM] Учёт финансов и логирование ВЫКЛЮЧЕНЫ!", -1)
         else
-            if show_add_funds_modal[0] then
-                window[0] = true
-                show_add_funds_modal[0] = false
+            wasOpenedByCommand = true
+            if update_available then
+                show_update_popup[0] = true
+                window[0] = false 
             else
                 window[0] = not window[0]
             end
         end
     end)
+
     sampRegisterChatCommand('tpmineexp', function(param)
         if not param or param == "" then
             sampAddChatMessage("{FF6347}[TM] Использование: /tpmineexp [сумма]", -1)
@@ -1497,11 +1496,6 @@ function main()
                 save_stats_to_file()
             end
             
-            -- АВТОМАТИЧЕСКАЯ ВЫГРУЗКА В ОБЛАКО КАЖДЫЕ 5 МИНУТ:
-            if current_tick - last_periodic_upload >= 300 then
-                last_periodic_upload = current_tick
-                uploadMyStatsToCloud(false)
-            end
 
             checkGoalCompletion()
 
@@ -1705,12 +1699,7 @@ imgui.Dummy(imgui.ImVec2(0, 5))
 drawSidebarTab(3, "SLIDERS", "Стилизация")
 imgui.Dummy(imgui.ImVec2(0, 5))
 drawSidebarTab(4, "CHART_LINE", "Статистика")
-imgui.Dummy(imgui.ImVec2(0, 5))
-drawSidebarTab(5, "BAN", "Игнор предметов")
-imgui.Dummy(imgui.ImVec2(0, 5))
-drawSidebarTab(6, "CLOCK_ROTATE_LEFT", "История") -- <-- ДОБАВЛЕНО
-imgui.Dummy(imgui.ImVec2(0, 5))
-drawSidebarTab(7, "USERS", "Друзья") -- КНОПКА ДРУЗЕЙ В МЕНЮ
+ -- КНОПКА ДРУЗЕЙ В МЕНЮ
 
 
 
@@ -3747,222 +3736,6 @@ local function isDuplicateReward(kind, amount)
 end
 
 
--- === ВЫГРУЗКА СВОЕЙ СТАТИСТИКИ В ОБЛАКО ===
--- === ВЫГРУЗКА И ПОЛУЧЕНИЕ СТАТИСТИКИ ИЗ ОБЛАКА ===
--- БАЗОВЫЙ ОБЛАЧНЫЙ СЕРВЕР (REST API / MySQL-Bridge)
--- === ВЫГРУЗКА И ПОЛУЧЕНИЕ СТАТИСТИКИ ИЗ ОБЛАКА (JSONBin.io) ===
-local JSONBIN_KEY = "$2a$10$b84xNkpepZpIwOvrE5yrEu9zHcKIRlhRhu4Mqp0dP92qNdl3qC9u2"
-
-function getMyNickName()
-    if sampIsLocalPlayerSpawned() then
-        local my_id = select(2, sampGetPlayerIdByCharHandle(PLAYER_PED))
-        if my_id then return sampGetPlayerNickname(my_id) end
-    end
-    return "Player"
-end
-
--- === УНИВЕРСАЛЬНЫЙ ОБРАБОТЧИК ЗАПРОСОВ (ПОДДЕРЖКА GET, POST, PUT ДЛЯ MOONLOADER) ===
-local function safe_http_call(method, url, data_str, headers)
-    local req = require('requests')
-    local options = {
-        headers = headers or {},
-        data = data_str,
-        timeout = 7.0
-    }
-    if method == "PUT" then
-        if req.put then
-            return req.put(url, options)
-        elseif req.request then
-            return req.request("PUT", url, options)
-        end
-    elseif method == "POST" then
-        if req.post then
-            return req.post(url, options)
-        elseif req.request then
-            return req.request("POST", url, options)
-        end
-    elseif method == "GET" then
-        if req.get then
-            return req.get(url, options)
-        elseif req.request then
-            return req.request("GET", url, options)
-        end
-    end
-    error("Метод " .. tostring(method) .. " не поддерживается текущей версией requests.lua")
-end
-
--- === ВЫГРУЗКА СТАТИСТИКИ В ОБЛАКО (JSONBin.io) ===
-function uploadMyStatsToCloud(force)
-    local my_nick = getMyNickName()
-    if not my_nick or my_nick == "Player" then return end
-    
-    if not force and os.time() - last_cloud_upload < 60 then return end
-    last_cloud_upload = os.time()
-
-    local payload = {
-        nick = my_nick,
-        date = session_stats.last_active_date ~= "" and session_stats.last_active_date or os.date("%d.%m.%Y"),
-        updated_at = os.date("%H:%M:%S"),
-        wage = session_stats.wages_accumulated or 0,
-        deposit = session_stats.dep_growth or 0,
-        dividend = session_stats.dividend_income or 0,
-        biz = session_stats.biz_income or 0,
-        btc = session_stats.btc_income or 0,
-        trade = session_stats.trade_income or 0,
-        deal = session_stats.deal_income or 0,
-        expenses = math.abs(tonumber(session_stats.expenses_accumulated) or 0),
-        net_total = getCurrentIncome(),
-        az = session_stats.az_accumulated or 0
-    }
-
-    friends_data_cache[my_nick] = payload
-
-    if requests_ok then
-        lua_thread.create(function()
-            local payload_json = json.encode(payload)
-            local bin_id = session_stats.jsonbin_id
-
-            if bin_id and bin_id ~= "" then
-                -- 1. Корзина уже существует — обновляем ее данные через PUT
-                local put_url = "https://api.jsonbin.io/v3/b/" .. bin_id
-                local headers = {
-                    ["Content-Type"] = "application/json",
-                    ["X-Master-Key"] = JSONBIN_KEY,
-                    ["Content-Length"] = tostring(#payload_json)
-                }
-                
-                local ok, resp = pcall(safe_http_call, "PUT", put_url, payload_json, headers)
-                if ok and resp and resp.status_code == 200 then
-                    print("[TM Cloud] Статистика успешно обновлена в корзине: " .. bin_id)
-                    if force then
-                        sampAddChatMessage("{00FF00}[TM Облако] Статистика успешно обновлена на сервере!", -1)
-                    end
-                elseif ok and resp and resp.status_code == 404 then
-                    -- Корзина была вручную удалена на сайте — сбрасываем и создадим новую
-                    session_stats.jsonbin_id = nil
-                    save_stats_to_file()
-                    uploadMyStatsToCloud(force)
-                else
-                    local err_code = (resp and resp.status_code) and tostring(resp.status_code) or "Timeout/Error"
-                    local err_body = (resp and resp.text) and tostring(resp.text) or tostring(resp)
-                    print(string.format("[TM Cloud Error PUT] Код: %s | Ответ: %s", err_code, err_body))
-                    if force then
-                        sampAddChatMessage(string.format("{FF6347}[TM Облако] Ошибка обновления (%s): %s", err_code, err_body:sub(1, 100)), -1)
-                    end
-                end
-            else
-                -- 2. Корзины еще нет — создаем одну постоянную через POST
-                local post_url = "https://api.jsonbin.io/v3/b"
-                local headers = {
-                    ["Content-Type"] = "application/json",
-                    ["X-Master-Key"] = JSONBIN_KEY,
-                    ["X-Bin-Name"] = "TM_" .. my_nick:gsub("%s+", "_"),
-                    ["X-Bin-Private"] = "false",
-                    ["Content-Length"] = tostring(#payload_json)
-                }
-                
-                local ok, resp = pcall(safe_http_call, "POST", post_url, payload_json, headers)
-                if ok and resp and (resp.status_code == 200 or resp.status_code == 201) and resp.text then
-                    local dec_ok, res = pcall(json.decode, resp.text)
-                    if dec_ok and res and res.metadata and res.metadata.id then
-                        session_stats.jsonbin_id = res.metadata.id
-                        save_stats_to_file()
-                        print("[TM Cloud] Создана постоянная корзина ID: " .. res.metadata.id)
-                        if force then
-                            sampAddChatMessage("{00FF00}[TM Облако] Создана корзина и данные выгружены!", -1)
-                        end
-                    end
-                else
-                    local err_code = (resp and resp.status_code) and tostring(resp.status_code) or "Failed"
-                    local err_body = (resp and resp.text) and tostring(resp.text) or tostring(resp)
-                    print(string.format("[TM Cloud Error POST] Код: %s | Ответ: %s", err_code, err_body))
-                    if force then
-                        sampAddChatMessage(string.format("{FF6347}[TM Облако] Ошибка создания (%s): %s", err_code, err_body:sub(1, 100)), -1)
-                    end
-                end
-            end
-        end)
-    end
-end
-
--- === ТАБЛИЦА ПРЯМЫХ ID (Чтобы всё работало моментально) ===
-local KNOWN_FRIEND_BINS = {
-    ["Dima_Shmakov"] = "6ab7ccfdac6210605af7f0e3",
-    ["Luke_Johnson"] = "6ab7e021ffd5d1605331cb13"
-}
-
-function fetchFriendStats(friend_nick, callback)
-    if not friend_nick or friend_nick == "" then return end
-    
-    -- Если смотрим себя
-    if friend_nick == getMyNickName() then
-        friends_data_cache[friend_nick] = {
-            nick = friend_nick,
-            date = session_stats.last_active_date ~= "" and session_stats.last_active_date or os.date("%d.%m.%Y"),
-            updated_at = os.date("%H:%M:%S"),
-            wage = session_stats.wages_accumulated or 0,
-            deposit = session_stats.dep_growth or 0,
-            dividend = session_stats.dividend_income or 0,
-            biz = session_stats.biz_income or 0,
-            btc = session_stats.btc_income or 0,
-            trade = session_stats.trade_income or 0,
-            deal = session_stats.deal_income or 0,
-            expenses = math.abs(tonumber(session_stats.expenses_accumulated) or 0),
-            net_total = getCurrentIncome(),
-            az = session_stats.az_accumulated or 0
-        }
-        if callback then callback(true, friends_data_cache[friend_nick]) end
-        return
-    end
-
-    if not requests_ok then return end
-    is_syncing_cloud = true
-
-    lua_thread.create(function()
-        local requests = require('requests')
-        local headers = { ["X-Master-Key"] = JSONBIN_KEY }
-        
-        -- 1. Сначала ищем ID в нашей "книге контактов"
-        local target_bin_id = KNOWN_FRIEND_BINS[friend_nick]
-
-        -- 2. Если в книге нет, пробуем найти среди всех корзин на аккаунте
-        if not target_bin_id then
-            local list_ok, list_resp = pcall(requests.get, "https://api.jsonbin.io/v3/b", { headers = headers, timeout = 5.0 })
-            if list_ok and list_resp and list_resp.status_code == 200 then
-                local ok_dec, list_data = pcall(json.decode, list_resp.text)
-                if ok_dec and type(list_data) == "table" then
-                    for _, bin in ipairs(list_data) do
-                        if bin.recordName == "TM_" .. friend_nick:gsub("%s+", "_") then
-                            target_bin_id = bin.record
-                            break
-                        end
-                    end
-                end
-            end
-        end
-
-        -- 3. Если нашли ID — качаем данные
-        if target_bin_id then
-            local get_ok, bin_resp = pcall(requests.get, "https://api.jsonbin.io/v3/b/" .. target_bin_id .. "/latest", {
-                headers = headers, timeout = 5.0
-            })
-            is_syncing_cloud = false
-            if get_ok and bin_resp and bin_resp.status_code == 200 then
-                local dec_ok2, res2 = pcall(json.decode, bin_resp.text)
-                local data = (dec_ok2 and res2 and res2.record) and res2.record or res2
-                if data and data.nick then
-                    friends_data_cache[friend_nick] = data
-                    if callback then callback(true, data) end
-                    return
-                end
-            end
-        end
-
-        is_syncing_cloud = false
-        if callback then callback(false, nil) end
-    end)
-end
-
 
 
 
@@ -4072,18 +3845,18 @@ end
     -- Пример 2 (VC): [Информация] Вы успешно пополнили счёт дома за электроэнергию на ??57.280.
     -- === [МАЙНИНГ] ПЕРЕХВАТ ОПЛАТЫ ЭЛЕКТРОЭНЕРГИИ (БЕЗ УМНОЖЕНИЯ) ===
     -- Пример: [Информация] Вы успешно пополнили счёт дома за электроэнергию на $ 300.000.
-    -- 3. Дивидендный договор (1 раз в час)
-    -- Пример: Вы получили +??30.000 за Дивидентный договор (выдается каждый часовой PayDay)
-    if cleanText:find("Дивидентный договор") or cleanText:find("Дивидендный договор") then
-        -- Вырезаем строго число (с точками или запятыми) перед словом "за"
-        local amountText = cleanText:match("([%d][%d%.,%s]*)%s*за%s*Дивид")
-                        or cleanText:match("%+%s*.-([%d][%d%.,]+)%s*за")
-                        or cleanText:match("([%d][%d%.,]+)")
+    -- === 3. ДИВИДЕНДНЫЙ ДОГОВОР (С ЗАЩИТОЙ ОТ VIP-ЧАТА) ===
+    local isPlayerChat = cleanText:find('%]:') or cleanText:find('VIP') or cleanText:find('PREMIUM') or cleanText:find('CHAT') or cleanText:find('ADV')
 
+    if not isPlayerChat and (cleanText:find("Дивидентный договор") or cleanText:find("Дивидендный договор")) and cleanText:find("Вы получили") then
+        local amountText = cleanText:match("получили%s*%+?%s*[$]?%s*([%d][%d%.,%s]*)") 
+                        or cleanText:match("%+%s*[$]?%s*([%d][%d%.,%s]*)")
         local amount = parse_numeric_value(amountText)
 
-        if amount and amount > 0 and not isDuplicateReward("dividend", amount) then
-            session_stats.dividend_income = (session_stats.dividend_income or 0) + amount
+        if amount > 0 and not isDuplicateReward("dividend", amount) then
+            session_stats.dividend_income = (tonumber(session_stats.dividend_income) or 0) + amount
+            session_stats.dividends_earned = (session_stats.dividends_earned or 0) + amount
+            session_stats.money_earned = (session_stats.money_earned or 0) + amount
             session_stats.last_payday_dividend = amount
 
             add_history_log("Дивиденды", "Дивидендный договор", "+$" .. formatNumber(amount), false)
@@ -4091,6 +3864,7 @@ end
             sampAddChatMessage("{00FF00}[TM] Успешно учтено: +$" .. formatNumber(amount) .. " (Дивидендный договор)", -1)
         end
     end
+
 
 
     -- === [МАЙНИНГ] ПЕРЕХВАТ ПОКУПКИ ОХЛАЖДАЮЩЕЙ ЖИДКОСТИ (БЕЗ УМНОЖЕНИЯ) ===
