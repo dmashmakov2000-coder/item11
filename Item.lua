@@ -41,17 +41,17 @@ local stats_file_path = script_folder .. "\\ScriptTM_stats.json"
 local ITEMS_DB_URL = "https://raw.githubusercontent.com/dmashmakov2000-coder/item11/main/items.json"
 local LOGO_URL = "https://raw.githubusercontent.com/dmashmakov2000-coder/item11/main/logo1.png"
 
-local SCRIPT_VERSION = "0.4.8.2"
+local SCRIPT_VERSION = "0.4.8.5"
 local UPDATE_URL = "https://raw.githubusercontent.com/dmashmakov2000-coder/item11/main/Item.lua"
 local CFG_FILENAME = 'Script [TM].ini'
 
-local ANTIBLOCK_URL = "https://tg.bakh.us"
+local ANTIBLOCK_URL = "https://orange-boat-d6a5.dmashmakov2000.workers.dev"
+
 local DEFAULT_API = "https://api.telegram.org"
 local wasOpenedByCommand = false
 
 local UPDATE_INFO = [[
-Удалил все что мешало 
-и нагружало скрипт 
+исправнено
 
 ]]
 
